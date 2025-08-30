@@ -54,7 +54,6 @@ class TabM(nn.Module):
 
         # >>> Continuous (numerical) features
         scaling_init_sections = []
-        print(num_embeddings)
         if n_num_features == 0:
             # assert bins is None
             self.num_module = None
