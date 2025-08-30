@@ -92,7 +92,7 @@ class LimiXMethod(Method):
         test_logit = self.model.predict(self.x_support, self.y_support, x_query)
         test_label = self.y_test
 
-        test_logit_tensor = torch.tensor(test_logit, dtype=torch.float32)
+        test_logit_tensor = torch.tensor(test_logit, dtype=torch.float32, device=torch.device("cpu"))
         test_label_tensor = torch.tensor(test_label, dtype=torch.float32 if self.is_regression else torch.long)
 
         vl = self.criterion(test_logit_tensor, test_label_tensor).item()
