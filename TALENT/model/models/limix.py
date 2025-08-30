@@ -1,0 +1,1 @@
+from TALENT.model.lib.limix.inference.predictor import LimiXPredictor
