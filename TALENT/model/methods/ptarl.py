@@ -82,15 +82,18 @@ class PTARLMethod(Method):
         self.model.eval()
         self.data_format(False, N, C, y)
 
-        tic = time.time()
         test_logit,test_label = test(self.model, self.test_loader,self.args)
-        self.predict_time = time.time() - tic
-        
-        vl = self.criterion(torch.tensor(test_logit), torch.tensor(test_label)).item()
+            
+        vl = self.criterion(torch.tensor(test_logit), torch.tensor(test_label)).item()     
+
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
+
+        # FIX: Denormalize regression predictions
+        if self.is_regression and self.y_info.get('policy') == 'mean_std':
+            test_logit = test_logit * self.y_info['std'] + self.y_info['mean']
 
         print('Test: loss={:.4f}'.format(vl))
         for name, res in zip(metric_name, vres):
             print('[{}]={:.4f}'.format(name, res))
-        
+            
         return vl, vres, metric_name, test_logit

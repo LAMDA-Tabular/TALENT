@@ -100,7 +100,9 @@ class TabICLMethod(Method):
         self.fit_time = 0  # general model does not require fitting
 
     def predict(self, data, info, model_name):
-        N, C, y = data
+        import time
+        start_time = time.time()
+        N,C,y = data
         self.data_format(False, N, C, y)
         if self.N_test is not None and self.C_test is not None:
             Test_X = np.concatenate((self.N_test,self.C_test),axis=1)
@@ -108,19 +110,22 @@ class TabICLMethod(Method):
             Test_X = self.C_test
         else:
             Test_X = self.N_test
-
-        tic = time.time()
+            
         if self.is_regression:
             test_logit = self.model.predict(Test_X)
         else:
             test_logit = self.model.predict_proba(Test_X)
-        self.predict_time = time.time() - tic
-        
         test_logit = test_logit.astype(np.float32)
         test_label = self.y_test
         vl = self.criterion(torch.tensor(test_logit),torch.tensor(test_label)).item()
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
+
+        # FIX: Denormalize regression predictions
+        if self.is_regression and self.y_info.get('policy') == 'mean_std':
+            test_logit = test_logit * self.y_info['std'] + self.y_info['mean']
+
         print('Test: loss={:.4f}'.format(vl))
         for name, res in zip(metric_name, vres):
             print('[{}]={:.4f}'.format(name, res))
+        print('Time cost: {:.4f}s'.format(time.time() - start_time))
         return vl, vres, metric_name, test_logit

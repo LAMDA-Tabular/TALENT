@@ -133,9 +133,9 @@ class TabRMethod(Method):
         print('best epoch {}, best val res={:.4f}'.format(self.trlog['best_epoch'], self.trlog['best_res']))
         ## Evaluation Stage
         self.model.eval()
+        
         self.data_format(False, N, C, y)
         
-        tic = time.time()
         test_logit, test_label = [], []
         with torch.no_grad():
             for i, (X, y) in tqdm(enumerate(self.test_loader)):
@@ -145,9 +145,11 @@ class TabRMethod(Method):
                     X_num, X_cat = None, X
                 else:
                     X_num, X_cat = X, None  
+                
                 candidate_x_num = self.N['train'] if self.N is not None else None
                 candidate_x_cat = self.C['train'] if self.C is not None else None
                 candidate_y = self.y['train']
+                
                 if self.args.use_float:
                     X_num = X_num.float() if X_num is not None else None
                     X_cat = X_cat.float() if X_cat is not None else None
@@ -155,10 +157,11 @@ class TabRMethod(Method):
                     candidate_x_cat = candidate_x_cat.float() if candidate_x_cat is not None else None
                     if self.is_regression:
                         candidate_y = candidate_y.float()
+                
                 pred = self.model(
-                    x_num = X_num,
-                    x_cat = X_cat,
-                    y = None,
+                    x_num=X_num,
+                    x_cat=X_cat,
+                    y=None,
                     candidate_x_num=candidate_x_num,
                     candidate_x_cat=candidate_x_cat,
                     candidate_y=candidate_y,
@@ -168,13 +171,17 @@ class TabRMethod(Method):
                 
                 test_logit.append(pred)
                 test_label.append(y)
-        self.predict_time = time.time() - tic
-
+        
         test_logit = torch.cat(test_logit, 0)
         test_label = torch.cat(test_label, 0)
         
         vl = self.criterion(test_logit, test_label).item()     
+
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
+
+        # FIX: Denormalize regression predictions
+        if self.is_regression and self.y_info.get('policy') == 'mean_std':
+            test_logit = test_logit * self.y_info['std'] + self.y_info['mean']
 
         print('Test: loss={:.4f}'.format(vl))
         for name, res in zip(metric_name, vres):

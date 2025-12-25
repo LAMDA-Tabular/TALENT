@@ -81,11 +81,12 @@ class MitraMethod(Method):
 
 
     def predict(self, data, info, model_name):
+        start_time = time.time()
         N, C, y = data
         self.data_format(False, N, C, y)
         
         if self.N_test is not None and self.C_test is not None:
-            Test_X = np.concatenate((self.N_test, self.C_test),axis=1)
+            Test_X = np.concatenate((self.N_test, self.C_test), axis=1)
         elif self.N_test is None and self.C_test is not None:
             Test_X = self.C_test
         else:
@@ -108,7 +109,6 @@ class MitraMethod(Method):
         
         results = []
         self.model.eval()
-        tic = time.time()
         with torch.no_grad():
             for start in range(0, n_obs_query, max_samples_query):
                 end = min(start + max_samples_query, n_obs_query)
@@ -126,16 +126,15 @@ class MitraMethod(Method):
                 padding_obs_query = torch.zeros((batch_size, batch_n_query), dtype=torch.bool, device=self.args.device)
 
                 test_logit = self.model(
-                    x_support = x_support_batch,
-                    y_support = y_support_batch,
-                    x_query = x_query_batch,
-                    padding_features = padding_features,
-                    padding_obs_support = padding_obs_support,
-                    padding_obs_query__ = padding_obs_query,
+                    x_support=x_support_batch,
+                    y_support=y_support_batch,
+                    x_query=x_query_batch,
+                    padding_features=padding_features,
+                    padding_obs_support=padding_obs_support,
+                    padding_obs_query__=padding_obs_query,
                 ) # [1, batch_n_query, n_classes]
 
                 results.append(test_logit.squeeze(0))
-        self.predict_time = time.time() - tic
 
         test_logit = torch.cat(results, dim=0).cpu()
         if not self.is_regression:
@@ -147,7 +146,12 @@ class MitraMethod(Method):
         vl = self.criterion(test_logit, test_label_tensor).item()
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
         
+        # FIX: Denormalize regression predictions
+        if self.is_regression and self.y_info.get('policy') == 'mean_std':
+            test_logit = test_logit * self.y_info['std'] + self.y_info['mean']
+
         print('Test: loss={:.4f}'.format(vl))
         for name, res in zip(metric_name, vres):
             print('[{}]={:.4f}'.format(name, res))
+        print('Time cost: {:.4f}s'.format(time.time() - start_time))
         return vl, vres, metric_name, test_logit

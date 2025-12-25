@@ -168,12 +168,14 @@ class GRANDEMethod(Method):
         else:
             assert self.C is not None and self.N is not None
             X_test = np.concatenate((np.array(self.C_test), np.array(self.N_test)), axis=1)
-        
+            
         y_test = np.array(self.y_test)
+            
+        # X_test = self.model.apply_preprocessing(X_test)
+            
         test_dataset = TensorDataset(torch.tensor(X_test, dtype=torch.float64), torch.tensor(y_test, dtype=torch.float64))
         self.test_loader = DataLoader(test_dataset, batch_size=1024, shuffle=False, drop_last=False)
-        
-        tic = time.time()
+            
         test_logit, test_label = [], []
         with torch.no_grad():
             for i, (X, y) in tqdm(enumerate(self.test_loader)):
@@ -181,18 +183,21 @@ class GRANDEMethod(Method):
                 pred = self.model(X)
                 test_logit.append(pred)
                 test_label.append(y)
-        self.predict_time = time.time() - tic
-
+            
         test_logit = torch.cat(test_logit, 0)
         test_label = torch.cat(test_label, 0)
-        
+            
         test_label__ = test_label.long() if self.is_multiclass else test_label.unsqueeze(1)
         vl = self.criterion(test_logit, test_label__).item()
-        
+            
         if self.is_binclass:
             test_logit = np.stack([-test_logit.cpu().squeeze(), test_logit.cpu().squeeze()], axis=-1)
 
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
+
+        # FIX: Denormalize regression predictions
+        if self.is_regression and self.y_info.get('policy') == 'mean_std':
+            test_logit = test_logit * self.y_info['std'] + self.y_info['mean']
 
         print('Test: loss={:.4f}'.format(vl))
         for name, res in zip(metric_name, vres):

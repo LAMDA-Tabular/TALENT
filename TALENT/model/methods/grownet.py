@@ -199,7 +199,6 @@ class GrowNetMethod(Method):
             self.model.to_double()
         self.data_format(False, N, C, y)
 
-        tic = time.time()
         test_logit, test_label = [], []
         with torch.no_grad():
             for i, (X, y) in tqdm(enumerate(self.test_loader)):
@@ -209,23 +208,25 @@ class GrowNetMethod(Method):
                     X_num, X_cat = None, X
                 else:
                     X_num, X_cat = X, None  
-                        
+                            
                 _,pred = self.model.forward(X_num,X_cat)
 
                 test_logit.append(pred)
                 test_label.append(y)
-        self.predict_time = time.time() - tic
-        
+                    
         test_logit = torch.cat(test_logit, 0)
         test_label = torch.cat(test_label, 0)
-        
+            
         vl = self.criterion(test_logit, test_label).item()     
 
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
 
+        # FIX: Denormalize regression predictions
+        if self.is_regression and self.y_info.get('policy') == 'mean_std':
+            test_logit = test_logit * self.y_info['std'] + self.y_info['mean']
+
         print('Test: loss={:.4f}'.format(vl))
         for name, res in zip(metric_name, vres):
             print('[{}]={:.4f}'.format(name, res))
-
         
         return vl, vres, metric_name, test_logit

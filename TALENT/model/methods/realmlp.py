@@ -128,9 +128,9 @@ class RealMLPMethod(Method):
     def predict(self, data, info, model_name):
         N, C, y = data
         print('best epoch {}, best val res={:.4f}'.format(self.trlog['best_epoch'], self.trlog['best_res']))
-        
+            
         self.data_format(False, N, C, y)
-        
+            
         if self.C_test is None:
             assert self.N_test is not None
             X_test = np.array(self.N_test)
@@ -141,17 +141,19 @@ class RealMLPMethod(Method):
             assert self.C_test is not None and self.N_test is not None
             X_test = np.concatenate((np.array(self.C_test), np.array(self.N_test)), axis=1)
 
-        tic = time.time()
         test_logit = self.model.predict(X_test)
-        self.predict_time = time.time() - tic
         test_label = self.y_test
-    
+        
         test_logit = torch.from_numpy(test_logit)
         test_label = torch.from_numpy(test_label)
-        
+            
         vl = self.criterion(test_logit, test_label).item()
 
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
+
+        # FIX: Denormalize regression predictions
+        if self.is_regression and self.y_info.get('policy') == 'mean_std':
+            test_logit = test_logit * self.y_info['std'] + self.y_info['mean']
 
         print('Test: loss={:.4f}'.format(vl))
         for name, res in zip(metric_name, vres):

@@ -65,23 +65,14 @@ class TabMMethod(Method):
             self.model.double()
 
     def predict(self, data, info, model_name):
-        """
-        Predict the results of the data.
-
-        :param data: tuple, (N, C, y)
-        :param info: dict, information about the data
-        :param model_name: str, name of the model
-        :return: tuple, (loss, metric, metric_name, predictions)
-        """
-        N,C,y = data
+        N, C, y = data
         self.model.load_state_dict(torch.load(osp.join(self.args.save_path, model_name + '-{}.pth'.format(str(self.args.seed))))['params'])
         print('best epoch {}, best val res={:.4f}'.format(self.trlog['best_epoch'], self.trlog['best_res']))
         ## Evaluation Stage
         self.model.eval()
 
         self.data_format(False, N, C, y)
-        
-        tic = time.time()
+
         test_logit, test_label = [], []
         with torch.no_grad():
             for i, (X, y) in tqdm(enumerate(self.test_loader)):
@@ -96,8 +87,7 @@ class TabMMethod(Method):
                 pred = pred.mean(1)
                 test_logit.append(pred)
                 test_label.append(y)
-        self.predict_time = time.time() - tic
-                
+            
         test_logit = torch.cat(test_logit, 0)
         test_label = torch.cat(test_label, 0)
         
@@ -105,12 +95,15 @@ class TabMMethod(Method):
 
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
 
+        # FIX: Denormalize regression predictions
+        if self.is_regression and self.y_info.get('policy') == 'mean_std':
+            test_logit = test_logit * self.y_info['std'] + self.y_info['mean']
+
         print('Test: loss={:.4f}'.format(vl))
         for name, res in zip(metric_name, vres):
             print('[{}]={:.4f}'.format(name, res))
-        
-        return vl, vres, metric_name, test_logit
 
+        return vl, vres, metric_name, test_logit
     def train_epoch(self, epoch):
         """
         Train the model for one epoch.
