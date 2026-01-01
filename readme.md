@@ -57,6 +57,17 @@ Welcome to **TALENT**, a benchmark with a comprehensive machine learning toolbox
          year={2024}
 }
 
+@article{JMLR:v26:25-0512,
+  author  = {Si-Yang Liu and Hao-Run Cai and Qi-Le Zhou and Huai-Hong Yin and Tao Zhou and Jun-Peng Jiang and Han-Jia Ye},
+  title   = {Talent: A Tabular Analytics and Learning Toolbox},
+  journal = {Journal of Machine Learning Research},
+  year    = {2025},
+  volume  = {26},
+  number  = {226},
+  pages   = {1--16},
+  url     = {http://jmlr.org/papers/v26/25-0512.html}
+}
+
 @article{liu2024talenttabularanalyticslearning,
          title={TALENT: A Tabular Analytics and Learning Toolbox}, 
          author={Si-Yang Liu and 
