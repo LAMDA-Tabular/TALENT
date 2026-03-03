@@ -24,7 +24,7 @@ setup(
         "Requests==2.31.0",
         "scikit_learn==1.4.2",
         "scipy==1.13.0",
-        "torch==2.0.1",
+        "torch==2.8.0",
         # xgboost==2.0.3
         # lightgbm==4.3.0
         # catboost==1.2.3
