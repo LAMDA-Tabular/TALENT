@@ -73,16 +73,6 @@ Welcome to **TALENT**, a benchmark with a comprehensive machine learning toolbox
   pages   = {1--16},
   url     = {http://jmlr.org/papers/v26/25-0512.html}
 }
-
-@article{liu2024talenttabularanalyticslearning,
-         title={TALENT: A Tabular Analytics and Learning Toolbox}, 
-         author={Si-Yang Liu and 
-         		 Hao-Run Cai and 
-         		 Qi-Le Zhou and 
-         		 Han-Jia Ye},
-         journal={arXiv preprint arXiv:2407.04057},
-         year={2024}
-}
 ```
 
 
