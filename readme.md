@@ -90,6 +90,7 @@ Welcome to **TALENT**, a benchmark with a comprehensive machine learning toolbox
 
 ## 📰 What's New
 
+- [2026-03]🌟 We have updated the TALENT-extension datasets and results. [Link](https://box.nju.edu.cn/d/b7b23a19ee054aaba7b6/?p=%2F&mode=list)
 - [2025-11]🌟 Add [RFM](https://www.science.org/doi/10.1126/science.adi5639) (Science).
 - [2025-11]🌟 Add [Real-TabPFN](https://arxiv.org/abs/2507.03971).
 - [2025-11]🌟 Add [LimiX](https://arxiv.org/abs/2509.03505).
