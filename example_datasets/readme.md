@@ -3,6 +3,9 @@
 
 This repository contains supplemental datasets for the paper ***A Closer Look at Deep Learning on Tabular Data***. which are available at [Google Drive](https://drive.google.com/drive/folders/1j1zt3zQIo8dO6vkO-K-WE6pSrl71bf0z?usp=drive_link). The datasets are provided in two zip files: `benchmark_dataset.zip` and `training_dynamic_informations.zip`. 
 
+## News
+We have updated the TALENT-extension datasets and results. [Link](https://box.nju.edu.cn/d/b7b23a19ee054aaba7b6/?p=%2F&mode=list)
+
 ## 1. `benchmark_dataset.zip`
 
 This zip file contains all the tabular datasets used in the paper. Each dataset is stored in a separate subfolder named after the dataset. Each dataset folder consists of:
