@@ -86,7 +86,7 @@ class GRANDEMethod(Method):
             assert self.C is not None
             X_train = np.array(self.C['train'])
             X_val = np.array(self.C['val'])
-            cat_idx = list(range(self.C.shape[1]))
+            cat_idx = list(range(self.C['train'].shape[1]))
         else:
             assert self.C is not None and self.N is not None
             X_train = np.concatenate((np.array(self.C['train']), np.array(self.N['train'])), axis=1)
@@ -175,7 +175,8 @@ class GRANDEMethod(Method):
             
         test_dataset = TensorDataset(torch.tensor(X_test, dtype=torch.float64), torch.tensor(y_test, dtype=torch.float64))
         self.test_loader = DataLoader(test_dataset, batch_size=1024, shuffle=False, drop_last=False)
-            
+
+        tic = time.time()
         test_logit, test_label = [], []
         with torch.no_grad():
             for i, (X, y) in tqdm(enumerate(self.test_loader)):
@@ -183,7 +184,8 @@ class GRANDEMethod(Method):
                 pred = self.model(X)
                 test_logit.append(pred)
                 test_label.append(y)
-            
+        self.predict_time = time.time() - tic
+
         test_logit = torch.cat(test_logit, 0)
         test_label = torch.cat(test_label, 0)
             

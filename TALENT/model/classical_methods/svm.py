@@ -48,10 +48,10 @@ class SvmMethod(classical_methods):
         test_label = self.y_test
         if self.is_regression:
             test_logit = self.model.predict(self.N_test)
-            # Denormalize regression predictions back to original scale
-            if self.y_info.get('policy') == 'mean_std':
-                test_logit = test_logit * self.y_info['std'] + self.y_info['mean']
         else:
             test_logit = self.model.predict_proba(self.N_test)
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
+        # Denormalize regression predictions back to original scale for the returned value
+        if self.is_regression and self.y_info.get('policy') == 'mean_std':
+            test_logit = test_logit * self.y_info['std'] + self.y_info['mean']
         return vres, metric_name, test_logit

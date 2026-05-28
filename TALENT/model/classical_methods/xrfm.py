@@ -215,12 +215,12 @@ class XRFMMethod(classical_methods):
             # Convert to numpy if tensor
             if isinstance(test_output, torch.Tensor):
                 test_output = test_output.cpu().numpy()
-            # Denormalize regression predictions back to original scale
-            if self.y_info.get('policy') == 'mean_std':
-                test_output = test_output * self.y_info['std'] + self.y_info['mean']
         else:
             test_output = self.model.predict_proba(X_test)
         vres, metric_name = self.metric(test_output, test_label, self.y_info)
+        # Denormalize regression predictions back to original scale for the returned value
+        if self.is_regression and self.y_info.get('policy') == 'mean_std':
+            test_output = test_output * self.y_info['std'] + self.y_info['mean']
         return vres, metric_name, test_output
     
     def metric(self, predictions, labels, y_info):

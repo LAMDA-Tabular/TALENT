@@ -107,6 +107,7 @@ class MitraMethod(Method):
             self.y_support = self.y_support[idx]
             n_obs_support = max_samples_support
         
+        tic = time.time()
         results = []
         self.model.eval()
         with torch.no_grad():
@@ -135,6 +136,7 @@ class MitraMethod(Method):
                 ) # [1, batch_n_query, n_classes]
 
                 results.append(test_logit.squeeze(0))
+        self.predict_time = time.time() - tic
 
         test_logit = torch.cat(results, dim=0).cpu()
         if not self.is_regression:

@@ -29,6 +29,11 @@ def check_softmax(logits):
 class TabICLMethod(Method):
     def __init__(self, args, is_regression):
         super().__init__(args, is_regression)
+        # The bundled TabICL v1.1 is classifier-only — use `tabicl_v2` for regression.
+        assert is_regression is False, (
+            "TabICL v1 does not support regression. "
+            "Use --model_type tabicl_v2 (requires `pip install -U 'tabicl>=2.0.0'`)."
+        )
         assert(args.normalization == 'none')
         assert(args.cat_policy == 'indices')
         assert(args.num_policy == 'none')
@@ -93,14 +98,26 @@ class TabICLMethod(Method):
             cat_indices = [i for i in range(self.C['train'].shape[1])]
         else:
             sampled_X = self.N['train']
-        self.sampled_X = sampled_X#[:sample_size]
-        self.sampled_Y = sampled_Y# [:sample_size]
+
+        # Optional sample_size cap — TabICL keeps the full train set in-context,
+        # which can OOM on big datasets. Configurable via config['general']['sample_size'].
+        general = self.args.config.get('general', {}) or {}
+        sample_size = general.get('sample_size', None)
+        if sample_size is not None and sampled_X.shape[0] > sample_size:
+            from sklearn.model_selection import train_test_split
+            sampled_X, _, sampled_Y, _ = train_test_split(
+                sampled_X, sampled_Y,
+                train_size=sample_size,
+                stratify=sampled_Y,
+                random_state=self.args.seed,
+            )
+        self.sampled_X = sampled_X
+        self.sampled_Y = sampled_Y
         self.construct_model(cat_indices=cat_indices)
         self.model.fit(self.sampled_X,self.sampled_Y)
         self.fit_time = 0  # general model does not require fitting
 
     def predict(self, data, info, model_name):
-        import time
         start_time = time.time()
         N,C,y = data
         self.data_format(False, N, C, y)
@@ -110,17 +127,26 @@ class TabICLMethod(Method):
             Test_X = self.C_test
         else:
             Test_X = self.N_test
-            
+
+        tic = time.time()
         if self.is_regression:
             test_logit = self.model.predict(Test_X)
         else:
             test_logit = self.model.predict_proba(Test_X)
+        self.predict_time = time.time() - tic
+
         test_logit = test_logit.astype(np.float32)
         test_label = self.y_test
-        vl = self.criterion(torch.tensor(test_logit),torch.tensor(test_label)).item()
+        if self.is_regression:
+            # Ensure shapes match for MSE loss
+            t_pred = torch.tensor(test_logit).reshape(-1)
+            t_lab = torch.tensor(test_label).reshape(-1).float()
+            vl = self.criterion(t_pred, t_lab).item()
+        else:
+            vl = self.criterion(torch.tensor(test_logit), torch.tensor(test_label)).item()
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
 
-        # FIX: Denormalize regression predictions
+        # FIX: Denormalize regression predictions for the returned value
         if self.is_regression and self.y_info.get('policy') == 'mean_std':
             test_logit = test_logit * self.y_info['std'] + self.y_info['mean']
 

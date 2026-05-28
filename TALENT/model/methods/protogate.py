@@ -118,8 +118,8 @@ class ProtoGateMethod(Method):
         
         test_logit = torch.cat(test_logit, 0)
         test_label = torch.cat(test_label, 0)
-        
-        vl = 1.0   
+
+        vl = self.criterion(test_logit, test_label).item()
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
 
         print('Test: loss={:.4f}'.format(vl))

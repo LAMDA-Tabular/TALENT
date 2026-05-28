@@ -141,7 +141,9 @@ class RealMLPMethod(Method):
             assert self.C_test is not None and self.N_test is not None
             X_test = np.concatenate((np.array(self.C_test), np.array(self.N_test)), axis=1)
 
+        tic = time.time()
         test_logit = self.model.predict(X_test)
+        self.predict_time = time.time() - tic
         test_label = self.y_test
         
         test_logit = torch.from_numpy(test_logit)

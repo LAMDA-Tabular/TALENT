@@ -363,15 +363,15 @@ def get_deep_args():
         default_args = json.load(f)
     parser.add_argument('--dataset', type=str, default=default_args['dataset'])
     parser.add_argument('--model_type', type=str, default=default_args['model_type'],
-                        choices=['mlp', 'resnet', 'autoint', 'snn', 'ftt', 'dcn2', 'tabr', 
-                                 'modernNCA', 'tabnet', 'node', 'tabcaps', 'saint', 'tangos', 
-                                 'ptarl', 'danets', 'tabtransformer', 'grownet', 'dnnr', 
+                        choices=['mlp', 'resnet', 'autoint', 'snn', 'ftt', 'dcn2', 'tabr',
+                                 'modernNCA', 'tabnet', 'node', 'tabcaps', 'saint', 'tangos',
+                                 'ptarl', 'danets', 'tabtransformer', 'grownet', 'dnnr',
                                  'switchtab', 'bishop', 'protogate', 'realmlp', 'mlp_plr',
-                                 'excelformer', 'grande', 'amformer', 'trompt', 'tabm', 
-                                 't2gformer', 'tabautopnpnet', 
-                                 
-                                 'tabpfn', 'tabpfn_v2', 'tabpfn_real', 'hyperfast', 'tabptm', 
-                                 'tabicl', 'mitra', 'limix', 
+                                 'excelformer', 'grande', 'amformer', 'trompt', 'tabm',
+                                 't2gformer', 'tabautopnpnet',
+
+                                 'tabpfn', 'tabpfn_v2', 'tabpfn_v3', 'tabpfn_real', 'hyperfast', 'tabptm',
+                                 'tabicl', 'tabicl_v2', 'mitra', 'limix',
                                  ])
 
     # optimization parameters
@@ -890,6 +890,9 @@ def get_method(model):
     elif model == 'tabpfn_v2':
         from TALENT.model.methods.tabpfn_v2 import TabPFNMethod
         return TabPFNMethod
+    elif model == 'tabpfn_v3':
+        from TALENT.model.methods.tabpfn_v3 import TabPFNv3Method
+        return TabPFNv3Method
     elif model == 'tabpfn_real':
         from TALENT.model.methods.tabpfn_real import TabPFNRealMethod
         return TabPFNRealMethod
@@ -902,6 +905,9 @@ def get_method(model):
     elif model == 'tabicl':
         from TALENT.model.methods.tabicl import TabICLMethod
         return TabICLMethod
+    elif model == 'tabicl_v2':
+        from TALENT.model.methods.tabicl_v2 import TabICLv2Method
+        return TabICLv2Method
     elif model == 'mitra':
         from TALENT.model.methods.mitra import MitraMethod
         return MitraMethod
