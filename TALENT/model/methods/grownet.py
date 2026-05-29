@@ -199,6 +199,7 @@ class GrowNetMethod(Method):
             self.model.to_double()
         self.data_format(False, N, C, y)
 
+        tic = time.time()
         test_logit, test_label = [], []
         with torch.no_grad():
             for i, (X, y) in tqdm(enumerate(self.test_loader)):
@@ -207,13 +208,14 @@ class GrowNetMethod(Method):
                 elif self.C is not None and self.N is None:
                     X_num, X_cat = None, X
                 else:
-                    X_num, X_cat = X, None  
-                            
+                    X_num, X_cat = X, None
+
                 _,pred = self.model.forward(X_num,X_cat)
 
                 test_logit.append(pred)
                 test_label.append(y)
-                    
+        self.predict_time = time.time() - tic
+
         test_logit = torch.cat(test_logit, 0)
         test_label = torch.cat(test_label, 0)
             

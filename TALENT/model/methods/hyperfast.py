@@ -54,8 +54,9 @@ class HyperFastMethod(Method):
 
         sampled_Y = self.y['train']
         if self.N is not None and self.C is not None:
-            sampled_X = np.concatenate((self.C['train'], self.N['train']),axis=1)
-            cat_features = list(range(self.C['train'].shape[1]))
+            sampled_X = np.concatenate((self.N['train'], self.C['train']), axis=1)
+            n_num = self.N['train'].shape[1]
+            cat_features = list(range(n_num, n_num + self.C['train'].shape[1]))
         elif self.N is None and self.C is not None:
             sampled_X = self.C['train']
             cat_features = list(range(self.C['train'].shape[1]))

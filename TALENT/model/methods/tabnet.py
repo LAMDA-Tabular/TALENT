@@ -100,7 +100,7 @@ class TabNetMethod(Method):
             eval_metric=eval_metric,
             max_epochs=self.args.max_epoch, patience=20,
             batch_size=self.args.batch_size, virtual_batch_size=256,
-            device=f'cuda:0',
+            device=str(self.args.device),
             task=task
         )
         self.fit_time = time.time() - tic

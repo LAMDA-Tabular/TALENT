@@ -1,0 +1,18 @@
+{
+    "tabicl_v2": {
+        "model": {},
+        "training": {},
+        "general": {
+            "sample_size": 60000,
+            "n_estimators": 32,
+            "batch_size": 8,
+            "use_amp": true,
+            "allow_auto_download": true,
+            "softmax_temperature": 0.9,
+            "average_logits": true,
+            "use_hierarchical": true,
+            "class_shift": true,
+            "verbose": false
+        }
+    }
+}

@@ -39,10 +39,10 @@ class LinearRegressionMethod(classical_methods):
         self.data_format(False, N, C, y)
         test_label = self.y_test
         test_logit = self.model.predict(self.N_test)
-        # Denormalize regression predictions back to original scale
+        vres, metric_name = self.metric(test_logit, test_label, self.y_info)
+        # Denormalize regression predictions back to original scale for the returned value
         if self.y_info.get('policy') == 'mean_std':
             test_logit = test_logit * self.y_info['std'] + self.y_info['mean']
-        vres, metric_name = self.metric(test_logit, test_label, self.y_info)
         return vres, metric_name, test_logit
     
     def metric(self, predictions, labels, y_info):

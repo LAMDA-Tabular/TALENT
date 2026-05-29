@@ -82,7 +82,9 @@ class PTARLMethod(Method):
         self.model.eval()
         self.data_format(False, N, C, y)
 
+        tic = time.time()
         test_logit,test_label = test(self.model, self.test_loader,self.args)
+        self.predict_time = time.time() - tic
             
         vl = self.criterion(torch.tensor(test_logit), torch.tensor(test_label)).item()     
 

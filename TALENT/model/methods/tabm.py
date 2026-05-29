@@ -73,6 +73,7 @@ class TabMMethod(Method):
 
         self.data_format(False, N, C, y)
 
+        tic = time.time()
         test_logit, test_label = [], []
         with torch.no_grad():
             for i, (X, y) in tqdm(enumerate(self.test_loader)):
@@ -81,13 +82,14 @@ class TabMMethod(Method):
                 elif self.C is not None and self.N is None:
                     X_num, X_cat = None, X
                 else:
-                    X_num, X_cat = X, None  
-                        
+                    X_num, X_cat = X, None
+
                 pred = self.model(X_num, X_cat)
                 pred = pred.mean(1)
                 test_logit.append(pred)
                 test_label.append(y)
-            
+        self.predict_time = time.time() - tic
+
         test_logit = torch.cat(test_logit, 0)
         test_label = torch.cat(test_label, 0)
         

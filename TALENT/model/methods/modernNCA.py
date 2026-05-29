@@ -139,7 +139,8 @@ class ModernNCAMethod(Method):
         self.model.eval()
         
         self.data_format(False, N, C, y)
-        
+
+        tic = time.time()
         test_logit, test_label = [], []
         with torch.no_grad():
             for i, (X, y) in tqdm(enumerate(self.test_loader)):
@@ -150,11 +151,11 @@ class ModernNCAMethod(Method):
                     X_num, X_cat = None, X
                 else:
                     X_num, X_cat = X, None
-                
+
                 candidate_x_num = self.N['train'] if self.N is not None else None
                 candidate_x_cat = self.C['train'] if self.C is not None else None
                 candidate_y = self.y['train']
-                
+
                 if self.args.use_float:
                     X_num = X_num.float() if X_num is not None else None
                     X_cat = X_cat.float() if X_cat is not None else None
@@ -162,14 +163,14 @@ class ModernNCAMethod(Method):
                     candidate_x_cat = candidate_x_cat.float() if candidate_x_cat is not None else None
                     if self.is_regression:
                         candidate_y = candidate_y.float()
-                
+
                 if X_cat is None and X_num is not None:
                     x, candidate_x = X_num, candidate_x_num
                 elif X_cat is not None and X_num is None:
                     x, candidate_x = X_cat, candidate_x_cat
                 else:
                     x, candidate_x = torch.cat([X_num, X_cat], dim=1), torch.cat([candidate_x_num, candidate_x_cat], dim=1)
-                
+
                 pred = self.model(
                     x = x,
                     y = None,
@@ -177,10 +178,11 @@ class ModernNCAMethod(Method):
                     candidate_y = candidate_y,
                     is_train = False,
                 ).squeeze(-1)
-                
+
                 test_logit.append(pred)
                 test_label.append(y)
-                
+        self.predict_time = time.time() - tic
+
         test_logit = torch.cat(test_logit, 0)
         test_label = torch.cat(test_label, 0)
         
