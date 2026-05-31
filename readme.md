@@ -80,6 +80,7 @@ Welcome to **TALENT**, a benchmark with a comprehensive machine learning toolbox
 
 ## 📰 What's New
 
+- [2026-05]🌟 Add [TabPFN v3](https://github.com/PriorLabs/TabPFN) (PriorLabs 2026) and [TabICL v2](https://github.com/soda-inria/tabicl) (ICML 2026, regression support added).
 - [2026-03]🌟 We have updated the TALENT-extension datasets and results. [Link](https://box.nju.edu.cn/d/b7b23a19ee054aaba7b6/?p=%2F&mode=list)
 - [2025-11]🌟 Add [RFM](https://www.science.org/doi/10.1126/science.adi5639) (Science).
 - [2025-11]🌟 Add [Real-TabPFN](https://arxiv.org/abs/2507.03971).
@@ -152,6 +153,8 @@ TALENT integrates an extensive array of 30+ deep learning architectures for tabu
 38. **[Real-TabPFN](https://arxiv.org/abs/2507.03971)**: An enhanced tabular foundation model that extends TabPFNv2 through continued pre-training on real-world datasets for classification tasks. 
 39. **[RFM](https://www.science.org/doi/10.1126/science.adi5639)**: A non-deep, backpropagation-free feature learning algorithm, iteratively applies AGOP to a kernel machine to adaptively learn task-specific features.
 40. **[xRFM](https://arxiv.org/abs/2508.10053)**: A tabular model that combines RFMs with an adaptive tree structure, enabling it to learn features local to data subsets and scale log-linearly with the number of samples.
+41. **[TabPFN v3](https://github.com/PriorLabs/TabPFN)**: TabPFN v3 (PriorLabs 2026), with native context up to ~1M rows × 200 features, 160-class support, and an optional thinking mode. Requires `pip install -U 'tabpfn>=8.0.0'`.
+42. **[TabICL v2](https://github.com/soda-inria/tabicl)**: TabICL v2 (ICML 2026), now supporting both classification and regression (via `TabICLRegressor`), with native quantile regression. Requires `pip install -U 'tabicl>=2.0.0'`.
 
 
 🔧 If you want to check the **default hyperparameters and hyperparameter search spaces** of all methods, please visit:  
@@ -200,6 +203,45 @@ if __name__ == '__main__':
 ```bash
 python train_model_deep.py --model_type MODEL_NAME
 ```
+
+### 🐍 Python API (library mode)
+
+TALENT also exposes a library-style API alongside the CLI scripts, so you can call methods directly from Python or a Jupyter notebook without manipulating `sys.argv`:
+
+```python
+import TALENT
+from TALENT.model.lib.data import get_dataset
+
+train_val, test, info = get_dataset("your_dataset", "./data")
+
+# Single-seed run
+result = TALENT.run("tabpfn_v3", train_val, test, info)
+print(dict(zip(result.metric_names, result.metrics)))
+print("Fit time:", result.fit_time, "Predict time:", result.predict_time)
+
+# Multi-seed run with hyperparameter tuning
+result = TALENT.run("catboost", train_val, test, info, tune=True, n_trials=50, seed_num=3)
+print("Mean metrics:", dict(zip(result.metric_names, result.metrics_mean)))
+print("Std metrics:",  dict(zip(result.metric_names, result.metrics_std)))
+```
+
+Introspect or filter methods via the unified registry:
+
+```python
+# What does this method need?
+spec = TALENT.get_method_spec("tabicl_v2")
+print(spec.cat_policy, spec.normalization, spec.supports_regression, spec.supports_hpo)
+
+# List all GPU-only deep methods that support regression
+for s in TALENT.list_methods(
+    architecture=TALENT.Architecture.DEEP,
+    hardware=TALENT.Hardware.GPU,
+    supports_regression=True,
+):
+    print(s.name)
+```
+
+Both the CLI scripts and the Python API are backed by the same `MethodSpec` registry, so adding a new method requires only a single registry entry (see `TALENT/model/method_registry.py`).
 
 
 
