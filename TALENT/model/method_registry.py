@@ -275,6 +275,12 @@ _METHODS_DEEP = [
           normalization="none", num_policy="none",
           supports_hpo=False, train_row_limit=10_000,
           notes="TabPFN v2 (bundled, Nature 2025)."),
+    _spec("tabpfn_v2_5", "TALENT.model.methods.tabpfn_v2_5", "TabPFNv2_5Method",
+          _DEEP, _GPU, _PROBS, cat_policy=("indices",),
+          normalization="none", num_policy="none",
+          supports_hpo=False, train_row_limit=50_000,
+          notes="TabPFN v2.5 (PriorLabs Nov 2025; external `tabpfn>=8.0.0`). "
+                "~50k rows x 2k features native context."),
     _spec("tabpfn_v3", "TALENT.model.methods.tabpfn_v3", "TabPFNv3Method",
           _DEEP, _GPU, _PROBS, cat_policy=("indices",),
           normalization="none", num_policy="none",
@@ -314,6 +320,12 @@ _METHODS_DEEP = [
           normalization="none", num_policy="none",
           supports_hpo=False,
           notes="LimiX tabular foundation model."),
+    _spec("tabdpt", "TALENT.model.methods.tabdpt", "TabDPTMethod",
+          _DEEP, _GPU, _PROBS, cat_policy=("indices",),
+          normalization="none", num_policy="none",
+          supports_hpo=False,
+          notes="TabDPT (Layer 6 AI). ICL + retrieval; supports both "
+                "classification and regression. External `tabdpt` package."),
 ]
 
 
