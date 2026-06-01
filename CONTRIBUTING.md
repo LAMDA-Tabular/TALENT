@@ -27,7 +27,11 @@ To add new methods to the codebase:
 For methods similar to MLP (only model design needed):
 1. Add model class in `model/models/`
 2. Inherit from `model/methods/base.py` and override `construct_model()`
-3. Add method name in `get_method()` function in `model/utils.py`
+3. Register the method in the unified registry at `model/method_registry.py`
+   by appending a `MethodSpec(...)` entry (declaring `cat_policy`,
+   `normalization`, `output_type`, `supports_hpo`, etc.). The CLI argparse
+   `choices` lists and `get_method()` are both derived from this registry,
+   so no other dispatcher edits are needed.
 4. Add parameter settings in:
    - `configs/default/[MODEL_NAME].json`
    - `configs/opt_space/[MODEL_NAME].json`
