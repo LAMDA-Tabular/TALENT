@@ -75,8 +75,24 @@ from TALENT.model.method_registry import (
 class RunResult:
     """Output of a single :func:`run` call.
 
-    For single-seed runs, the `*_mean` / `*_std` fields are equal to the
-    single value and 0.0 respectively, so the API shape is stable.
+    For single-seed runs, the ``*_mean`` / ``*_std`` fields equal the
+    single value and ``0.0`` respectively, so the API shape is stable.
+
+    Notes on the prediction-related fields:
+
+    - ``predictions`` is the method's *raw* output (logits for some
+      methods, probabilities for others, regression scalars for regressors).
+      Regression predictions are returned on the **original target scale**
+      (i.e. denormalized).
+    - ``predict_proba`` is a uniform ``(N, K)`` probability array for
+      every classifier regardless of whether its native output is logits
+      or probabilities. ``None`` for regression and class-label-only
+      methods.
+    - ``predict_labels`` is the corresponding hard prediction. For binary
+      classification with threshold tuning, it uses the tuned threshold;
+      otherwise it uses ``argmax(predict_proba)``.
+    - ``threshold`` is the decision threshold tuned on the validation set
+      (binary classification only). ``None`` otherwise.
     """
     predictions: np.ndarray
     loss: float
@@ -91,6 +107,11 @@ class RunResult:
     metrics_mean: Tuple[float, ...] = field(default_factory=tuple)
     metrics_std: Tuple[float, ...] = field(default_factory=tuple)
     per_seed: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Standardized probabilistic output + tuned threshold (last seed)
+    predict_proba: Optional[np.ndarray] = None
+    predict_labels: Optional[np.ndarray] = None
+    threshold: Optional[float] = None
 
     # Bookkeeping
     method_type: str = ""
@@ -109,6 +130,7 @@ class RunResult:
             "metrics_std": dict(zip(self.metric_names, [float(x) for x in self.metrics_std])) if self.metrics_std else {},
             "fit_time": float(self.fit_time),
             "predict_time": float(self.predict_time),
+            "threshold": float(self.threshold) if self.threshold is not None else None,
             "save_path": self.save_path,
         }
         return d
@@ -327,6 +349,8 @@ def run(
     save_path: Optional[str] = None,
     return_method: bool = False,
     verbose: bool = False,
+    tune_threshold: bool = True,
+    threshold_metric: str = "f1",
     **arg_overrides,
 ) -> RunResult:
     """Fit a TALENT method on ``train_val_data`` and predict on ``test_data``.
@@ -366,6 +390,15 @@ def run(
         Adds RAM cost, so off by default.
     verbose : bool, default False
         Forwarded to the method when supported.
+    tune_threshold : bool, default True
+        For binary classification only: tune the decision threshold on
+        the validation split (already required by TALENT) to maximise the
+        ``threshold_metric``, and apply that threshold when computing
+        Accuracy / F1 / Avg_Recall / Avg_Precision. Threshold-independent
+        metrics (LogLoss, AUC, Brier, ECE) are unaffected. Has no effect
+        on regression or multiclass tasks.
+    threshold_metric : {"f1", "accuracy", "precision", "recall", "balanced_accuracy"}
+        Which metric to optimise when tuning the threshold. Default ``"f1"``.
     **arg_overrides
         Passed through to :func:`build_args`.
 
@@ -436,9 +469,17 @@ def run(
             )
         args = tune_hyper_parameters(args, opt_space, train_val_data, info)
 
+    # Use the centralized evaluator so the CLI scripts and the API share
+    # the exact same evaluation logic (predict_proba standardization +
+    # threshold tuning on val).
+    from TALENT.model.lib.evaluation import evaluate
+
     per_seed: List[Dict[str, Any]] = []
     last_predictions: Optional[np.ndarray] = None
     last_metric_names: Tuple[str, ...] = ()
+    last_predict_proba: Optional[np.ndarray] = None
+    last_predict_labels: Optional[np.ndarray] = None
+    last_threshold: Optional[float] = None
     fit_times: List[float] = []
     predict_times: List[float] = []
     method = None
@@ -459,20 +500,22 @@ def run(
         elif fit_time is None:
             fit_time = 0.0
 
-        ret = method.predict(test_data, info, model_name=args.evaluate_option)
-        # Deep methods return (vl, vres, metric_names, predictions);
-        # classical methods return (vres, metric_names, predictions).
-        if len(ret) == 4:
-            vl, vres, metric_names, preds = ret
-        elif len(ret) == 3:
-            vres, metric_names, preds = ret
-            vl = float("nan")
-        else:
-            raise RuntimeError(
-                f"Unexpected predict() return arity {len(ret)} for {model_type!r}"
-            )
+        eval_result = evaluate(
+            method,
+            train_val_data,
+            test_data,
+            info,
+            model_name=args.evaluate_option,
+            output_type=spec.output_type,
+            tune_threshold=tune_threshold,
+            threshold_metric=threshold_metric,
+        )
+        vl = eval_result["loss"]
+        vres = eval_result["metrics"]
+        metric_names = eval_result["metric_names"]
+        preds = eval_result["predictions"]
 
-        # Coerce to numpy if needed
+        # Coerce raw predictions to numpy (predict_proba / labels are already numpy).
         if hasattr(preds, "detach"):
             preds = preds.detach().cpu().numpy()
         preds = np.asarray(preds)
@@ -489,9 +532,15 @@ def run(
             "fit_time": float(fit_time),
             "predict_time": predict_time,
             "predictions": preds,
+            "predict_proba": eval_result["predict_proba"],
+            "predict_labels": eval_result["predict_labels"],
+            "threshold": eval_result["threshold"],
         })
         last_predictions = preds
         last_metric_names = tuple(metric_names)
+        last_predict_proba = eval_result["predict_proba"]
+        last_predict_labels = eval_result["predict_labels"]
+        last_threshold = eval_result["threshold"]
 
     # Aggregate
     if seed_num > 1:
@@ -504,6 +553,9 @@ def run(
 
     result = RunResult(
         predictions=last_predictions,
+        predict_proba=last_predict_proba,
+        predict_labels=last_predict_labels,
+        threshold=last_threshold,
         loss=per_seed[-1]["loss"],
         metrics=per_seed[-1]["metrics"],
         metric_names=last_metric_names,

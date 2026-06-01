@@ -318,14 +318,22 @@ class Method(object, metaclass=abc.ABCMeta):
         torch.save(self.trlog, osp.join(self.args.save_path, 'trlog'))   
 
 
-    def metric(self, predictions, labels, y_info):
+    def metric(self, predictions, labels, y_info, threshold=None):
         """
         Compute the evaluation metric.
 
         :param predictions: np.ndarray, predictions
         :param labels: np.ndarray, labels
         :param y_info: dict, information about the labels
-        :return: tuple, (metric, metric_name)
+        :param threshold: float or None. If given **and** the task is binary
+            classification, use ``predictions[:, 1] >= threshold`` for the
+            hard-prediction metrics (Accuracy, Avg_Recall, Avg_Precision,
+            F1). Threshold-independent metrics (LogLoss, AUC, Brier, ECE)
+            are not affected. Silently ignored for regression/multiclass.
+        :return: tuple, (metric, metric_name). For classification, the
+            tuple includes Brier and ECE in addition to the existing
+            metrics; they are appended at the end so positional access of
+            existing fields is preserved.
         """
         if not isinstance(labels, np.ndarray):
             labels = labels.cpu().numpy()
@@ -338,36 +346,57 @@ class Method(object, metaclass=abc.ABCMeta):
             if y_info['policy'] == 'mean_std':
                 mae *= y_info['std']
                 rmse *= y_info['std']
-            return (mae,r2,rmse), ("MAE", "R2", "RMSE")
+            return (mae, r2, rmse), ("MAE", "R2", "RMSE")
         elif self.is_binclass:
-            # if not softmax, convert to probabilities
+            # If not already in [0,1] summing to 1, convert.
             predictions = check_softmax(predictions)
-            accuracy = skm.accuracy_score(labels, predictions.argmax(axis=-1))
-            avg_recall = skm.balanced_accuracy_score(labels, predictions.argmax(axis=-1))
-            avg_precision = skm.precision_score(labels, predictions.argmax(axis=-1), average='macro')
-            f1_score = skm.f1_score(labels, predictions.argmax(axis=-1), average='binary')
+            # Hard predictions: prefer the user-supplied threshold; else argmax.
+            if threshold is not None:
+                hard_preds = (predictions[:, 1] >= threshold).astype(int)
+            else:
+                hard_preds = predictions.argmax(axis=-1)
+            accuracy = skm.accuracy_score(labels, hard_preds)
+            avg_recall = skm.balanced_accuracy_score(labels, hard_preds)
+            avg_precision = skm.precision_score(labels, hard_preds, average='macro')
+            f1_score = skm.f1_score(labels, hard_preds, average='binary')
             log_loss = skm.log_loss(labels, predictions, labels=y_info['classes'])
             auc = skm.roc_auc_score(labels, predictions[:, 1], labels=y_info['classes']) if len(np.unique(labels)) == 2 else float("nan")
-            return (accuracy, avg_recall, avg_precision, f1_score, log_loss, auc), ("Accuracy", "Avg_Recall", "Avg_Precision", "F1", "LogLoss", "AUC")
+            # Calibration metrics (threshold-independent).
+            from TALENT.model.lib.calibration import brier_score, expected_calibration_error
+            brier = brier_score(labels, predictions)
+            ece = expected_calibration_error(labels, predictions)
+            return (
+                (accuracy, avg_recall, avg_precision, f1_score, log_loss, auc, brier, ece),
+                ("Accuracy", "Avg_Recall", "Avg_Precision", "F1", "LogLoss", "AUC", "Brier", "ECE"),
+            )
         elif self.is_multiclass:
             # if not softmax, convert to probabilities
             predictions = check_softmax(predictions)
-            accuracy = skm.accuracy_score(labels, predictions.argmax(axis=-1))
-            avg_recall = skm.balanced_accuracy_score(labels, predictions.argmax(axis=-1))
-            avg_precision = skm.precision_score(labels, predictions.argmax(axis=-1), average='macro')
-            f1_score = skm.f1_score(labels, predictions.argmax(axis=-1), average='macro')
+            hard_preds = predictions.argmax(axis=-1)
+            accuracy = skm.accuracy_score(labels, hard_preds)
+            avg_recall = skm.balanced_accuracy_score(labels, hard_preds)
+            avg_precision = skm.precision_score(labels, hard_preds, average='macro')
+            f1_score = skm.f1_score(labels, hard_preds, average='macro')
             log_loss = skm.log_loss(labels, predictions, labels=y_info['classes'])
-            
+
             present_classes = np.unique(labels)
             if len(present_classes) < 2:
                 auc = float("nan")
             else:
-                labels = label_binarize(labels, classes=y_info['classes'])
+                labels_bin = label_binarize(labels, classes=y_info['classes'])
                 class_indices = [i for i, c in enumerate(y_info['classes']) if c in present_classes]
-                predictions = predictions[:, class_indices]
-                labels = labels[:, class_indices]
-                auc = skm.roc_auc_score(labels, predictions, labels=present_classes, average='macro', multi_class='ovr')
-            
-            return (accuracy, avg_recall, avg_precision, f1_score, log_loss, auc), ("Accuracy", "Avg_Recall", "Avg_Precision", "F1", "LogLoss", "AUC")
+                preds_sliced = predictions[:, class_indices]
+                labels_bin = labels_bin[:, class_indices]
+                auc = skm.roc_auc_score(labels_bin, preds_sliced, labels=present_classes, average='macro', multi_class='ovr')
+
+            # Calibration metrics (use full-class probability vector).
+            from TALENT.model.lib.calibration import brier_score, expected_calibration_error
+            brier = brier_score(labels, predictions)
+            ece = expected_calibration_error(labels, predictions)
+
+            return (
+                (accuracy, avg_recall, avg_precision, f1_score, log_loss, auc, brier, ece),
+                ("Accuracy", "Avg_Recall", "Avg_Precision", "F1", "LogLoss", "AUC", "Brier", "ECE"),
+            )
         else:
             raise ValueError("Unknown tabular task type")

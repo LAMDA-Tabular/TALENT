@@ -60,11 +60,17 @@ class TabICLMethod(Method):
 
     def construct_model(self, model_config = None,cat_indices=[]):
             from TALENT.model.lib.tabicl.classifier import TabICLClassifier
+            from TALENT.model.method_registry import resolve_bundled_path
+            # Use bundled checkpoint if present; otherwise the TabICL library
+            # auto-downloads via `model_path=None` + `allow_auto_download=True`.
+            model_path = resolve_bundled_path(
+                "model/models/models_tabicl/tabicl-classifier-v1.1-0506.ckpt"
+            )
             self.model = TabICLClassifier(
                 device=self.args.device,
                 random_state=self.args.seed,
                 checkpoint_version="tabicl-classifier-v1.1-0506.ckpt",
-                model_path="./TALENT/model/models/models_tabicl/tabicl-classifier-v1.1-0506.ckpt",
+                model_path=model_path,
                 n_estimators=32,                  # number of ensemble members
                 norm_methods=["none", "power"],   # normalization methods to try
                 feat_shuffle_method="latin",      # feature permutation strategy

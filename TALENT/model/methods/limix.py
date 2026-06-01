@@ -44,8 +44,19 @@ class LimiXMethod(Method):
 
     def construct_model(self, model_config = None):
         from TALENT.model.models.limix import LimiXPredictor
-        model_path = "./TALENT/model/models/models_limix/LimiX-16M.ckpt"
-        config_path = f"./TALENT/model/lib/limix/config/{'reg' if self.is_regression else 'cls'}_default_noretrieval.json"
+        from TALENT.model.method_registry import resolve_bundled_path
+        cfg_name = ("reg" if self.is_regression else "cls") + "_default_noretrieval.json"
+        # Resolve bundled checkpoint + inference config via importlib.resources
+        # so the package works from any CWD; fall back to legacy relative path
+        # so behaviour from the repo root is preserved.
+        model_path = (
+            resolve_bundled_path("model/models/models_limix/LimiX-16M.ckpt")
+            or "./TALENT/model/models/models_limix/LimiX-16M.ckpt"
+        )
+        config_path = (
+            resolve_bundled_path(f"model/lib/limix/config/{cfg_name}")
+            or f"./TALENT/model/lib/limix/config/{cfg_name}"
+        )
         self.model = LimiXPredictor(
             device = self.args.device,
             model_path = model_path,

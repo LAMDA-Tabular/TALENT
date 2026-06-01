@@ -80,6 +80,7 @@ Welcome to **TALENT**, a benchmark with a comprehensive machine learning toolbox
 
 ## 📰 What's New
 
+- [2026-06]🌟 Evaluation improvements: **calibration metrics** (Brier, ECE) are now reported by default for every classifier, **decision thresholds** are tuned on the validation set for binary classification (used for Accuracy/F1/Precision/Recall; threshold-independent metrics like AUC/LogLoss/Brier/ECE are unaffected), and `RunResult` exposes a uniform `predict_proba`/`predict_labels` interface regardless of whether the underlying method natively returns logits or probabilities. Bundled checkpoints are now resolved via `importlib.resources` so methods work from any working directory.
 - [2026-05]🌟 Add [TabPFN v3](https://github.com/PriorLabs/TabPFN) (PriorLabs 2026) and [TabICL v2](https://github.com/soda-inria/tabicl) (ICML 2026, regression support added).
 - [2026-03]🌟 We have updated the TALENT-extension datasets and results. [Link](https://box.nju.edu.cn/d/b7b23a19ee054aaba7b6/?p=%2F&mode=list)
 - [2025-11]🌟 Add [RFM](https://www.science.org/doi/10.1126/science.adi5639) (Science).

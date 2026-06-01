@@ -45,7 +45,9 @@ class LinearRegressionMethod(classical_methods):
             test_logit = test_logit * self.y_info['std'] + self.y_info['mean']
         return vres, metric_name, test_logit
     
-    def metric(self, predictions, labels, y_info):
+    def metric(self, predictions, labels, y_info, threshold=None):
+        # `threshold` accepted for signature compat with base.metric();
+        # silently ignored because LinearRegression is regression-only.
         if not isinstance(labels, np.ndarray):
             labels = labels.cpu().numpy()
         if not isinstance(predictions, np.ndarray):

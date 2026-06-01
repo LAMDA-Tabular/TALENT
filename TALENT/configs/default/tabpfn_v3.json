@@ -3,9 +3,9 @@
         "model": {},
         "training": {},
         "general": {
-            "sample_size": 50000,
+            "sample_size": 1000000,
             "ignore_pretraining_limits": true,
-            "n_estimators": 4
+            "n_estimators": 32
         }
     }
 }

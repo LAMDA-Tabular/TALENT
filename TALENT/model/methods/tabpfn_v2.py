@@ -42,10 +42,16 @@ class TabPFNMethod(Method):
 
 
     def construct_model(self, model_config = None,cat_indices=[]):
+        from TALENT.model.method_registry import resolve_bundled_path
         if self.is_regression:
             from TALENT.model.models.tabpfn_v2 import TabPFNRegressor
+            # Use bundled checkpoint if present; otherwise fall back to the
+            # TabPFN library's auto-download (model_path="auto").
+            model_path = resolve_bundled_path(
+                "model/models/models_tabpfn/tabpfn-v2-regressor.ckpt"
+            ) or "auto"
             self.model = TabPFNRegressor(
-                model_path = "./TALENT/model/models/models_tabpfn/tabpfn-v2-regressor.ckpt",
+                model_path = model_path,
                 device = self.args.device,
                 random_state = self.args.seed,
                 n_estimators = 8,
@@ -54,8 +60,11 @@ class TabPFNMethod(Method):
             )
         else:
             from TALENT.model.models.tabpfn_v2 import TabPFNClassifier
+            model_path = resolve_bundled_path(
+                "model/models/models_tabpfn/tabpfn-v2-classifier.ckpt"
+            ) or "auto"
             self.model = TabPFNClassifier(
-                model_path = "./TALENT/model/models/models_tabpfn/tabpfn-v2-classifier.ckpt",
+                model_path = model_path,
                 device = self.args.device,
                 random_state = self.args.seed,
                 n_estimators = 4,

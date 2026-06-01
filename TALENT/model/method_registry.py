@@ -36,9 +36,43 @@ Schema:
 from __future__ import annotations
 
 import importlib
+import importlib.resources as _pkg_resources
+import os
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
+
+
+# ----------------------------------------------------------------------------
+#  Bundled-resource resolution
+# ----------------------------------------------------------------------------
+
+def resolve_bundled_path(relative: str) -> Optional[str]:
+    """Resolve a path relative to the installed ``TALENT`` package.
+
+    Returns the absolute filesystem path if the resource exists, or
+    ``None`` otherwise. Use this for bundled checkpoints and configs so
+    that the package keeps working regardless of the user's current
+    working directory (the historical hardcoded ``"./TALENT/..."`` paths
+    only worked when run from the repository root).
+
+    Example::
+
+        path = resolve_bundled_path("model/models/models_tabpfn/tabpfn-v2-classifier.ckpt")
+        # -> "/site-packages/TALENT/model/models/models_tabpfn/tabpfn-v2-classifier.ckpt"
+        #    or None if not bundled (auto-download fallback)
+    """
+    try:
+        import TALENT
+        p = _pkg_resources.files(TALENT).joinpath(relative)
+        # `Traversable` may be a filesystem path or a zipfile entry; convert
+        # to str and check existence on the filesystem (not in a zip).
+        path_str = str(p)
+        if os.path.exists(path_str):
+            return path_str
+    except Exception:
+        pass
+    return None
 
 
 # ----------------------------------------------------------------------------
@@ -223,8 +257,9 @@ _METHODS_DEEP = [
     _spec("bishop", "TALENT.model.methods.bishop", "BiSHopMethod",
           _DEEP, _GPU, _LOGITS, cat_policy=("indices",)),
     _spec("protogate", "TALENT.model.methods.protogate", "ProtoGateMethod",
-          _DEEP, _GPU, _LOGITS, cat_policy=_ALL_CAT_POLICIES,
-          supports_regression=False),
+          _DEEP, _GPU, _LABELS, cat_policy=_ALL_CAT_POLICIES,
+          supports_regression=False,
+          notes="ProtoGate predict() returns hard class labels, not probabilities."),
     _spec("tabautopnpnet", "TALENT.model.methods.tabautopnpnet", "TabAutoPNPNetMethod",
           _DEEP, _GPU, _LOGITS),
 

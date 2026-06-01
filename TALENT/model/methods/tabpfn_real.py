@@ -1,4 +1,5 @@
 from TALENT.model.methods.tabpfn_v2 import TabPFNMethod
+from TALENT.model.method_registry import resolve_bundled_path
 
 
 class TabPFNRealMethod(TabPFNMethod):
@@ -7,8 +8,11 @@ class TabPFNRealMethod(TabPFNMethod):
             raise ValueError("TabPFN-Real only supports classification tasks.")
         else:
             from TALENT.model.models.tabpfn_v2 import TabPFNClassifier
+            model_path = resolve_bundled_path(
+                "model/models/models_tabpfn/tabpfn-v2-classifier-finetuned-zk73skhh.ckpt"
+            ) or "auto"
             self.model = TabPFNClassifier(
-                model_path = "./TALENT/model/models/models_tabpfn/tabpfn-v2-classifier-finetuned-zk73skhh.ckpt",
+                model_path = model_path,
                 device = self.args.device,
                 random_state = self.args.seed,
                 n_estimators = 4,
