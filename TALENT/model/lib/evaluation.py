@@ -178,9 +178,10 @@ def evaluate(
         )
 
     # Snapshot the test-time state -- a second predict() call below would
-    # overwrite ``method.y_test``.
+    # overwrite ``method.y_test`` and ``method.predict_time``.
     test_labels = method.y_test if hasattr(method, "y_test") else None
     y_info = method.y_info if hasattr(method, "y_info") else None
+    test_predict_time = getattr(method, "predict_time", None)
 
     # ------ 2. Tune threshold on the validation set ---------------------------
     threshold: Optional[float] = None
@@ -214,6 +215,9 @@ def evaluate(
                 f"falling back to argmax metrics."
             )
             threshold = None
+
+    if test_predict_time is not None:
+        method.predict_time = test_predict_time
 
     # ------ 3. Build predict_proba / predict_labels --------------------------
     test_proba = standardize_predict_proba(
