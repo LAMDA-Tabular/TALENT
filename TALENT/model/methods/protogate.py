@@ -215,7 +215,12 @@ class ProtoGateMethod(Method):
                 self.continue_training = False
         torch.save(self.trlog, osp.join(self.args.save_path, 'trlog'))   
 
-    def metric(self, predictions, labels, y_info):
+    def metric(self, predictions, labels, y_info, threshold=None):
+        # ProtoGate's predict() returns hard class labels (not probabilities
+        # or logits), so this override keeps the original 4-metric classification
+        # output. The `threshold` parameter is accepted for signature compat
+        # with the new base.metric() but is silently ignored: there is no
+        # probability vector to apply a threshold to.
         if not isinstance(labels, np.ndarray):
             labels = labels.cpu().numpy()
         if not isinstance(predictions, np.ndarray):

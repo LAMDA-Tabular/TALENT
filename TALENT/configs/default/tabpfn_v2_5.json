@@ -1,11 +1,11 @@
 {
-    "tabpfn_v3": {
+    "tabpfn_v2_5": {
         "model": {},
         "training": {},
         "general": {
-            "sample_size": 1000000,
+            "sample_size": 50000,
             "ignore_pretraining_limits": true,
-            "n_estimators": 32
+            "n_estimators": 8
         }
     }
 }

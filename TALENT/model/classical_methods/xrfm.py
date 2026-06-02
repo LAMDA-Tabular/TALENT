@@ -223,20 +223,7 @@ class XRFMMethod(classical_methods):
             test_output = test_output * self.y_info['std'] + self.y_info['mean']
         return vres, metric_name, test_output
     
-    def metric(self, predictions, labels, y_info):
-        from sklearn import metrics as skm
-        if self.is_regression:
-            mae = skm.mean_absolute_error(labels, predictions)
-            rmse = skm.mean_squared_error(labels, predictions) ** 0.5
-            r2 = skm.r2_score(labels, predictions)
-            if y_info['policy'] == 'mean_std':
-                mae *= y_info['std']
-                rmse *= y_info['std']
-            return (mae,r2,rmse), ("MAE", "R2", "RMSE")
-        else:
-            predicted_classes = np.argmax(predictions, axis=1)
-            accuracy = skm.accuracy_score(labels, predicted_classes)
-            avg_precision = skm.precision_score(labels, predicted_classes, average='binary' if self.is_binclass else 'macro')
-            avg_recall = skm.recall_score(labels, predicted_classes, average='binary' if self.is_binclass else 'macro')
-            f1_score = skm.f1_score(labels, predicted_classes, average='binary' if self.is_binclass else 'macro')
-            return (accuracy, avg_precision, avg_recall, f1_score), ("Accuracy", "Avg_Precision", "Avg_Recall", "F1")
+    # NOTE: metric() override removed -- xRFM now inherits the unified
+    # classical_methods.base.metric() so it gets ECE / Brier / LogLoss / AUC
+    # alongside the other classification metrics, and threshold tuning
+    # works the same way as for every other classifier in TALENT.

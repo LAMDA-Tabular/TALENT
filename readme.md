@@ -80,6 +80,8 @@ Welcome to **TALENT**, a benchmark with a comprehensive machine learning toolbox
 
 ## 📰 What's New
 
+- [2026-06]🌟 Add **[TabPFN v2.5](https://arxiv.org/abs/2511.08667)** (PriorLabs, Nov 2025) and **[TabDPT](https://github.com/layer6ai-labs/TabDPT-inference)** (Layer 6 AI, ICL + retrieval). TALENT now ships the full TabPFN family (v1, v2, v2.5, v3) plus TabDPT alongside the other tabular foundation models.
+- [2026-06]🌟 Evaluation improvements: **calibration metrics** (Brier, ECE) are now reported by default for every classifier, **decision thresholds** are tuned on the validation set for binary classification (used for Accuracy/F1/Precision/Recall; threshold-independent metrics like AUC/LogLoss/Brier/ECE are unaffected), and `RunResult` exposes a uniform `predict_proba`/`predict_labels` interface regardless of whether the underlying method natively returns logits or probabilities. Bundled checkpoints are now resolved via `importlib.resources` so methods work from any working directory.
 - [2026-05]🌟 Add [TabPFN v3](https://github.com/PriorLabs/TabPFN) (PriorLabs 2026) and [TabICL v2](https://github.com/soda-inria/tabicl) (ICML 2026, regression support added).
 - [2026-03]🌟 We have updated the TALENT-extension datasets and results. [Link](https://box.nju.edu.cn/d/b7b23a19ee054aaba7b6/?p=%2F&mode=list)
 - [2025-11]🌟 Add [RFM](https://www.science.org/doi/10.1126/science.adi5639) (Science).
@@ -155,6 +157,8 @@ TALENT integrates an extensive array of 30+ deep learning architectures for tabu
 40. **[xRFM](https://arxiv.org/abs/2508.10053)**: A tabular model that combines RFMs with an adaptive tree structure, enabling it to learn features local to data subsets and scale log-linearly with the number of samples.
 41. **[TabPFN v3](https://github.com/PriorLabs/TabPFN)**: TabPFN v3 (PriorLabs 2026), with native context up to ~1M rows × 200 features, 160-class support, and an optional thinking mode. Requires `pip install -U 'tabpfn>=8.0.0'`.
 42. **[TabICL v2](https://github.com/soda-inria/tabicl)**: TabICL v2 (ICML 2026), now supporting both classification and regression (via `TabICLRegressor`), with native quantile regression. Requires `pip install -U 'tabicl>=2.0.0'`.
+43. **[TabPFN v2.5](https://arxiv.org/abs/2511.08667)**: TabPFN v2.5 (PriorLabs, Nov 2025), the intermediate release between v2 and v3. Scales in-context learning to ~50k rows × 2k features. Requires `pip install -U 'tabpfn>=8.0.0'`.
+44. **[TabDPT](https://github.com/layer6ai-labs/TabDPT-inference)**: A tabular foundation model from Layer 6 AI that combines in-context learning with retrieval and self-supervised pre-training on real data, removing fixed context-size limits. Requires `pip install -U tabdpt`.
 
 
 🔧 If you want to check the **default hyperparameters and hyperparameter search spaces** of all methods, please visit:  
@@ -385,6 +389,7 @@ We thank the following repos for providing helpful components/functions in our w
 - [TabAutoPNPNet](https://github.com/matteo-rizzo/periodic-tabular-dl)
 - [LimiX](https://github.com/limix-ldm/LimiX)
 - [xRFM](https://github.com/dmbeaglehole/xRFM)
+- [TabDPT](https://github.com/layer6ai-labs/TabDPT-inference)
 
 ## 🤗 Contact
 

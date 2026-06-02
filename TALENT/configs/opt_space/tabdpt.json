@@ -1,0 +1,13 @@
+{
+    "tabdpt": {
+        "model": {},
+        "training": {},
+        "general": {
+            "sample_size": 100000,
+            "n_ensembles": 8,
+            "context_size": 2048,
+            "temperature": 0.8,
+            "permute_classes": true
+        }
+    }
+}

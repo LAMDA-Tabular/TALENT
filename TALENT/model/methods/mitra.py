@@ -44,10 +44,14 @@ class MitraMethod(Method):
 
     def construct_model(self, model_config = None):
         from TALENT.model.models.mitra import Mitra
-        if self.is_regression:
-            model_path = "./TALENT/model/models/models_mitra/reg/"
-        else:
-            model_path = "./TALENT/model/models/models_mitra/cls/"
+        from TALENT.model.method_registry import resolve_bundled_path
+        subdir = "reg" if self.is_regression else "cls"
+        # Resolve via importlib.resources so the package works from any CWD.
+        model_path = resolve_bundled_path(f"model/models/models_mitra/{subdir}/")
+        if model_path is None:
+            # Fall back to the legacy relative path -- preserves prior
+            # behaviour when running from the repository root.
+            model_path = f"./TALENT/model/models/models_mitra/{subdir}/"
         self.model = Mitra.from_pretrained(
             path=model_path,
             device="cpu"  # safe tensor initialization on CPU
