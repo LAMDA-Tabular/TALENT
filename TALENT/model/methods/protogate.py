@@ -38,6 +38,10 @@ class ProtoGateMethod(Method):
             self.model.float()
         else:
             self.model.double()
+
+    def _probability_loss(self, predictions, labels):
+        predictions = predictions.clamp_min(1e-12)
+        return F.nll_loss(torch.log(predictions), labels)
     
     def fit(self, data, info, train = True, config = None):
         # if the method already fit the dataset, skip these steps (such as the hyper-tune process)
@@ -119,7 +123,7 @@ class ProtoGateMethod(Method):
         test_logit = torch.cat(test_logit, 0)
         test_label = torch.cat(test_label, 0)
 
-        vl = self.criterion(test_logit, test_label).item()
+        vl = self._probability_loss(test_logit, test_label).item()
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
 
         print('Test: loss={:.4f}'.format(vl))
@@ -216,35 +220,7 @@ class ProtoGateMethod(Method):
         torch.save(self.trlog, osp.join(self.args.save_path, 'trlog'))   
 
     def metric(self, predictions, labels, y_info, threshold=None):
-        # ProtoGate's predict() returns hard class labels (not probabilities
-        # or logits), so this override keeps the original 4-metric classification
-        # output. The `threshold` parameter is accepted for signature compat
-        # with the new base.metric() but is silently ignored: there is no
-        # probability vector to apply a threshold to.
-        if not isinstance(labels, np.ndarray):
-            labels = labels.cpu().numpy()
-        if not isinstance(predictions, np.ndarray):
-            predictions = predictions.cpu().numpy()
-        if self.is_regression:
-            mae = skm.mean_absolute_error(labels, predictions)
-            rmse = skm.mean_squared_error(labels, predictions) ** 0.5
-            r2 = skm.r2_score(labels, predictions)
-            if y_info['policy'] == 'mean_std':
-                mae *= y_info['std']
-                rmse *= y_info['std']
-            return (mae,r2,rmse), ("MAE", "R2", "RMSE")
-        elif self.is_binclass:
-            accuracy = skm.accuracy_score(labels, predictions)
-            avg_recall = skm.balanced_accuracy_score(labels, predictions)
-            avg_precision = skm.precision_score(labels, predictions, average='macro')
-            f1_score = skm.f1_score(labels, predictions, average='binary')
-            return (accuracy, avg_recall, avg_precision, f1_score), ("Accuracy", "Avg_Recall", "Avg_Precision", "F1")
-        elif self.is_multiclass:
-            accuracy = skm.accuracy_score(labels, predictions)
-            avg_recall = skm.balanced_accuracy_score(labels, predictions)
-            avg_precision = skm.precision_score(labels, predictions, average='macro')
-            f1_score = skm.f1_score(labels, predictions, average='macro')
-            return (accuracy, avg_recall, avg_precision, f1_score), ("Accuracy", "Avg_Recall", "Avg_Precision", "F1")
+        return super().metric(predictions, labels, y_info, threshold=threshold)
         
         
     def compute_pred_loss(self, x_query, x_cand, y_query, y_neighbor):
@@ -307,7 +283,7 @@ def proto_predict(query, neighbors, neighbor_labels, k):
     norms = torch.norm(diffs, p=2, dim=-1)
     indices = torch.argsort(norms, dim=-1).to(neighbor_labels.device)
     labels = neighbor_labels[indices[:, :k]]  # n x k x num_classes
-    label_counts = labels.sum(dim=1)  # n x num_classes
-    prediction = torch.argmax(label_counts, dim=1)  # n
+    label_counts = labels.sum(dim=1).float()  # n x num_classes
+    prediction = label_counts / float(k)
 
     return prediction, indices[:, :k]

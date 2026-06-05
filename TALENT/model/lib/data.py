@@ -164,7 +164,6 @@ def data_nan_process(N_data, C_data, num_nan_policy, cat_nan_policy, num_new_val
     if C_data is None:
         C = None
     else:
-        assert(cat_nan_policy == 'new')
         C = deepcopy(C_data)
         if 'train' in C_data.keys():
             if C['train'].ndim == 1:
@@ -175,26 +174,26 @@ def data_nan_process(N_data, C_data, num_nan_policy, cat_nan_policy, num_new_val
         C = {k: v.astype(str) for k,v in C.items()}
         
         # assume the cat nan condition
-        cat_nan_masks = {k: np.isnan(v) if np.issubdtype(v.dtype, np.number) else np.isin(v, ['nan', 'NaN', '', None]) for k, v in C.items()}
+        cat_nan_masks = {k: np.isnan(v) if np.issubdtype(v.dtype, np.number) else np.isin(v, ['nan', 'NaN', '', 'None', None]) for k, v in C.items()}
         if cat_nan_policy == 'new':
             if cat_new_value is None:
                 cat_new_value = '___null___'
                 imputer = None
-        elif cat_nan_policy == 'most_frequent':
-            if imputer is None:
-                cat_new_value = None
-                imputer = SimpleImputer(strategy='most_frequent') 
-                imputer.fit(C['train'])
-        else:
-            raise_unknown('categorical NaN policy', cat_nan_policy)
-        
-        if any(x.any() for x in cat_nan_masks.values()):
-            if imputer:
-                C = {k: imputer.transform(v) for k, v in C.items()}
-            else:
+            if any(x.any() for x in cat_nan_masks.values()):
                 for k, v in C.items():
                     cat_nan_indices = np.where(cat_nan_masks[k])
                     v[cat_nan_indices] = cat_new_value
+        elif cat_nan_policy == 'most_frequent':
+            cat_new_value = None
+            C_for_imputer = {k: v.astype(object) for k, v in C.items()}
+            for k, v in C_for_imputer.items():
+                v[cat_nan_masks[k]] = np.nan
+            if imputer is None:
+                imputer = SimpleImputer(strategy='most_frequent') 
+                imputer.fit(C_for_imputer['train'])
+            C = {k: imputer.transform(v) for k, v in C_for_imputer.items()}
+        else:
+            raise_unknown('categorical NaN policy', cat_nan_policy)
         
     result = (N, C, num_new_value, imputer, cat_new_value)
     return result
