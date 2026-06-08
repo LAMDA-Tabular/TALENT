@@ -568,8 +568,12 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info):
             config, sample_parameters(trial, opt_space[args.model_type], config)
         )
         if args.model_type == 'xgboost' and torch.cuda.is_available():
-            config['model']['tree_method'] = 'gpu_hist'
-            config['model']['gpu_id'] = args.gpu
+            # XGBoost >= 2.0 GPU API: tree_method='hist' + device='cuda'.
+            # The legacy 'gpu_hist' / 'gpu_id' form was deprecated in 2.0 and
+            # removed in 3.0, so we use the modern form to stay compatible
+            # across the supported XGBoost range.
+            config['model']['tree_method'] = 'hist'
+            config['model']['device'] = 'cuda'
             config['fit']["verbose"] = False
         elif args.model_type == 'catboost' and torch.cuda.is_available():
             config['fit']["logging_level"] = "Silent"

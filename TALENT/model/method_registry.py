@@ -262,7 +262,7 @@ _METHODS_DEEP = [
           supports_regression=False,
           notes="ProtoGate predict() returns neighbor-vote probabilities."),
     _spec("tabautopnpnet", "TALENT.model.methods.tabautopnpnet", "TabAutoPNPNetMethod",
-          _DEEP, _GPU, _LOGITS),
+          _DEEP, _GPU, _LOGITS, cat_policy=("tabr_ohe",)),
 
     # ----- Foundation models -----
     _spec("tabpfn", "TALENT.model.methods.tabpfn", "TabPFNMethod",
