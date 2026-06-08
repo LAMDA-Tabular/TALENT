@@ -66,6 +66,7 @@ class TabICLv2Method(Method):
             self.y_test = y_test['test']
 
     def construct_model(self, model_config=None, cat_indices=None):
+        import inspect
         cat_indices = cat_indices or []
         try:
             from tabicl import TabICLClassifier, TabICLRegressor
@@ -91,17 +92,18 @@ class TabICLv2Method(Method):
             if k in general:
                 common[k] = general[k]
 
-        if self.is_regression:
-            self.model = TabICLRegressor(**common)
-        else:
+        target_cls = TabICLRegressor if self.is_regression else TabICLClassifier
+        if not self.is_regression:
             # Classifier-only knobs
-            classifier_extras = dict(
+            common.update(
                 softmax_temperature=general.get('softmax_temperature', 0.9),
                 average_logits=general.get('average_logits', True),
                 use_hierarchical=general.get('use_hierarchical', True),
                 class_shift=general.get('class_shift', True),
             )
-            self.model = TabICLClassifier(**common, **classifier_extras)
+        accepted = set(inspect.signature(target_cls.__init__).parameters)
+        kwargs = {k: v for k, v in common.items() if k in accepted}
+        self.model = target_cls(**kwargs)
 
     def fit(self, data, info, train=True, config=None):
         N, C, y = data

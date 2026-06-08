@@ -10,6 +10,7 @@ from TALENT.model.utils import (
 )
 import numpy as np
 import time
+import torch
 from sklearn.metrics import accuracy_score, mean_squared_error
 
 class CatBoostMethod(classical_methods):
@@ -47,7 +48,7 @@ class CatBoostMethod(classical_methods):
         else:
             X_train = np.concatenate([self.N['train'], self.C['train'].astype(str)], axis=1)
             X_val = np.concatenate([self.N['val'], self.C['val'].astype(str)], axis=1)
-        if self.args.gpu != 'cpu' and self.args.gpu != '':
+        if self.args.gpu != 'cpu' and self.args.gpu != '' and torch.cuda.is_available():
             task_type = 'GPU'
         else:
             task_type = 'CPU'

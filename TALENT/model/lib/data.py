@@ -456,6 +456,8 @@ def mse_safe_broadcast(input, target) -> torch.Tensor:
     assert target.dim() in [1, 2], f"Unexpected target.shape = {target.shape}"
     if target.dim() == 2 and target.size(-1) == 1:
         target = target.squeeze(-1)
+    if input.dim() == 2 and input.size(-1) == 1 and target.dim() == 1:
+        input = input.squeeze(-1)
     assert input.shape == target.shape, f"{input.shape} != {target.shape}"
     return torch.nn.functional.mse_loss(input=input, target=target)
 

@@ -262,7 +262,7 @@ class TabCapsModel(BaseEstimator):
         """
         self.input_dim = input_dim
         self.output_dim = output_dim
-        load_model = torch.load(filepath)
+        load_model = torch.load(filepath, weights_only=False)
         self.network = load_model['model']
 
         self.network.eval()
