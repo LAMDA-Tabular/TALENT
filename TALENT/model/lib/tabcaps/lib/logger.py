@@ -23,7 +23,7 @@ class Train_Log():
 
     def load_checkpoint(self, optimizer):
         lastest_out_path = "{}/checkpoint.pth".format(self.resume_dir)
-        ckpt = torch.load(lastest_out_path)
+        ckpt = torch.load(lastest_out_path, weights_only=False)
         model = ckpt['model']
         start_epoch = ckpt['epoch'] + 1
         # model.load_state_dict(ckpt['state_dict'])

@@ -100,10 +100,16 @@ class TabPTMMethod(Method):
             d_out=self.d_out,
             **model_config
         ).to(self.args.device)
+        # Resolve the bundled meta-trained checkpoint relative to the installed
+        # package (works from any working directory). Fall back to the historical
+        # repo-relative path when the package resource cannot be located.
+        from TALENT.model.method_registry import resolve_bundled_path
         if self.is_regression:
-            self.model.load_state_dict(torch.load('model/models/models_tabptm/metaregC-numK16-Reweight-LR0.001-maneucbra-log.pth')['params'])  
+            rel = "model/models/models_tabptm/metaregC-numK16-Reweight-LR0.001-maneucbra-log.pth"
         else:
-            self.model.load_state_dict(torch.load('model/models/models_tabptm/metaclsA-numK32-Reweight-LR0.001-maneucbra-log.pth')['params'])
+            rel = "model/models/models_tabptm/metaclsA-numK32-Reweight-LR0.001-maneucbra-log.pth"
+        ckpt_path = resolve_bundled_path(rel) or osp.join("./TALENT", rel)
+        self.model.load_state_dict(torch.load(ckpt_path)['params'])
         if self.args.use_float:
             self.model.float()
         else:

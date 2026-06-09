@@ -268,7 +268,8 @@ def cat_encode(
         return (X, False)
     elif encoding == 'one-hot':
         encoder = sklearn.preprocessing.OneHotEncoder(
-            handle_unknown='ignore', sparse=False, dtype=np.float32  # type: ignore[code]
+            handle_unknown='ignore', sparse_output=False, dtype=np.float32  # type: ignore[code]
+            # `sparse_output` (sklearn >= 1.2); the old `sparse=` was removed in 1.4.
         )
         encoder.fit(X['train'])
         return ({k: encoder.transform(v) for k, v in X.items()}, True)  # type: ignore[code]

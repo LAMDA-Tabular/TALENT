@@ -453,9 +453,19 @@ def data_label_process(y_data, is_regression, info = None, encoder = None):
 
 
 def mse_safe_broadcast(input, target) -> torch.Tensor:
+    """MSE loss that squeezes a trailing singleton dim off ``input``/``target``
+    before computing the loss.
+
+    Regression heads emit ``(N, 1)`` while targets are usually ``(N,)`` (or vice
+    versa). Without squeezing, ``mse_loss`` would broadcast ``(N, 1)`` against
+    ``(N,)`` to ``(N, N)`` and silently compute the wrong (and huge) loss, so we
+    collapse the singleton dim on both sides and assert the shapes match.
+    """
     assert target.dim() in [1, 2], f"Unexpected target.shape = {target.shape}"
     if target.dim() == 2 and target.size(-1) == 1:
         target = target.squeeze(-1)
+    if input.dim() == 2 and input.size(-1) == 1 and target.dim() == 1:
+        input = input.squeeze(-1)
     assert input.shape == target.shape, f"{input.shape} != {target.shape}"
     return torch.nn.functional.mse_loss(input=input, target=target)
 

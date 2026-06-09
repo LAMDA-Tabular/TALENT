@@ -120,7 +120,7 @@ class DynamicNet:
 
     @classmethod
     def from_file(cls, path, builder):
-        d = torch.load(path)
+        d = torch.load(path, weights_only=False)
         net = DynamicNet( d['lr'], categories=None, d_embedding=None)
         net.boost_rate = d['boost_rate']
         if 'category_embeddings' in d:

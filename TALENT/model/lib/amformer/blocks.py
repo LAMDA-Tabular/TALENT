@@ -83,8 +83,8 @@ class MemoryBlock(nn.Module):
             self.num_per_group = -1
             # Do not use grouping, calculate for all
         else:
-            self.num_per_group = max(math.ceil(token_num/groups), num_per_group)
-            num_per_group = max(math.ceil(token_num/groups), num_per_group)
+            num_per_group = min(max(math.ceil(token_num/groups), num_per_group), token_num)
+            self.num_per_group = num_per_group
             self.gather_layer = nn.Conv1d((groups+int(use_cls_token)) * num_per_group, groups+int(use_cls_token), groups=groups+int(use_cls_token), kernel_size=1)
 
         

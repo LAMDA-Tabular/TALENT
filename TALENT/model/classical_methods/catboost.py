@@ -10,6 +10,7 @@ from TALENT.model.utils import (
 )
 import numpy as np
 import time
+import torch
 from sklearn.metrics import accuracy_score, mean_squared_error
 
 class CatBoostMethod(classical_methods):
@@ -47,7 +48,9 @@ class CatBoostMethod(classical_methods):
         else:
             X_train = np.concatenate([self.N['train'], self.C['train'].astype(str)], axis=1)
             X_val = np.concatenate([self.N['val'], self.C['val'].astype(str)], axis=1)
-        if self.args.gpu != 'cpu' and self.args.gpu != '':
+        # Only request GPU training when CUDA is actually available; otherwise
+        # CatBoost raises a hard error on machines with no compatible GPU.
+        if self.args.gpu != 'cpu' and self.args.gpu != '' and torch.cuda.is_available():
             task_type = 'GPU'
         else:
             task_type = 'CPU'
@@ -77,7 +80,7 @@ class CatBoostMethod(classical_methods):
             self.trlog['best_res'] = accuracy_score(self.y['val'], y_pred_val) 
         else:
             y_pred_val = self.model.predict(X_val)
-            self.trlog['best_res'] = mean_squared_error(self.y['val'], y_pred_val, squared=False)*self.y_info['std']
+            self.trlog['best_res'] = mean_squared_error(self.y['val'], y_pred_val) ** 0.5 * self.y_info['std']
         time_cost = time.time() - tic
         with open(ops.join(self.args.save_path , 'best-val-{}.pkl'.format(self.args.seed)), 'wb') as f:
             pickle.dump(self.model, f)
