@@ -1,7 +1,6 @@
 from TALENT.model.methods.base import Method
 import torch
 import numpy as np
-import torch
 import torch.nn.functional as F
 
 from TALENT.model.lib.data import (
@@ -41,7 +40,8 @@ class TabPFNMethod(Method):
             self.y_test = y_test['test']
 
 
-    def construct_model(self, model_config = None,cat_indices=[]):
+    def construct_model(self, model_config = None,cat_indices=None):
+        cat_indices = cat_indices or []
         from TALENT.model.method_registry import resolve_bundled_path
         if self.is_regression:
             from TALENT.model.models.tabpfn_v2 import TabPFNRegressor
@@ -91,7 +91,12 @@ class TabPFNMethod(Method):
             cat_indices = [i for i in range(self.C['train'].shape[1])]
         else:
             sampled_X = self.N['train']
-        sample_size = self.args.config['general']['sample_size']
+        # Row cap: config['general']['sample_size'] override, else the
+        # registry's train_row_limit. The TabPFN v2 wrapper subsamples
+        # internally, so the cap is forwarded to model.fit().
+        sample_size = self.resolve_sample_size()
+        if sample_size is None:
+            sample_size = sampled_X.shape[0]
         self.sampled_X = sampled_X
         self.sampled_Y = sampled_Y
         self.construct_model(cat_indices=cat_indices)

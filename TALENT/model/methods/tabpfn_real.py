@@ -3,7 +3,8 @@ from TALENT.model.method_registry import resolve_bundled_path
 
 
 class TabPFNRealMethod(TabPFNMethod):
-    def construct_model(self, model_config = None,cat_indices=[]):
+    def construct_model(self, model_config = None,cat_indices=None):
+        cat_indices = cat_indices or []
         if self.is_regression:
             raise ValueError("TabPFN-Real only supports classification tasks.")
         else:

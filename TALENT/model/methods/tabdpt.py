@@ -121,25 +121,10 @@ class TabDPTMethod(Method):
         else:
             sampled_X = self.N['train']
 
-        # Optional sample_size cap. TabDPT scales via retrieval so it can
-        # generally handle large train sets, but the cap is exposed for
-        # benchmarking / time-budget consistency with other methods.
-        general = self.args.config.get('general', {}) or {}
-        sample_size = general.get('sample_size', None)
-        if sample_size is not None and sampled_X.shape[0] > sample_size:
-            if not self.is_regression:
-                from sklearn.model_selection import train_test_split
-                sampled_X, _, sampled_Y, _ = train_test_split(
-                    sampled_X, sampled_Y,
-                    train_size=sample_size,
-                    stratify=sampled_Y,
-                    random_state=self.args.seed,
-                )
-            else:
-                rng = np.random.RandomState(self.args.seed)
-                idx = rng.choice(sampled_X.shape[0], size=sample_size, replace=False)
-                sampled_X = sampled_X[idx]
-                sampled_Y = sampled_Y[idx]
+        # Optional row cap. TabDPT scales via retrieval so it has no
+        # registry train_row_limit (unlimited); config['general']['sample_size']
+        # remains available as an explicit per-run override.
+        sampled_X, sampled_Y = self.subsample_train_rows(sampled_X, sampled_Y)
 
         self.sampled_X = sampled_X
         self.sampled_Y = sampled_Y

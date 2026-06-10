@@ -1,7 +1,6 @@
 from TALENT.model.methods.base import Method
 import torch
 import numpy as np
-import torch
 import os.path as osp
 from TALENT.model.lib.ptarl.utils import (
     fit_Ptarl,

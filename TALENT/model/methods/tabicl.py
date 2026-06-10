@@ -1,7 +1,6 @@
 from TALENT.model.methods.base import Method
 import torch
 import numpy as np
-import torch
 import torch.nn.functional as F
 
 from TALENT.model.lib.data import (
@@ -12,20 +11,8 @@ from TALENT.model.lib.data import (
 )
 import time
 
-def check_softmax(logits):
-    """
-    Check if the logits are already probabilities, and if not, convert them to probabilities.
-    
-    :param logits: np.ndarray of shape (N, C) with logits
-    :return: np.ndarray of shape (N, C) with probabilities
-    """
-    # Check if any values are outside the [0, 1] range and Ensure they sum to 1
-    if np.any((logits < 0) | (logits > 1)) or (not np.allclose(logits.sum(axis=-1), 1, atol=1e-5)):
-        exps = np.exp(logits - np.max(logits, axis=1, keepdims=True))  # stabilize by subtracting max
-        return exps / np.sum(exps, axis=1, keepdims=True)
-    else:
-        return logits
-    
+from TALENT.model.utils import check_softmax
+
 class TabICLMethod(Method):
     def __init__(self, args, is_regression):
         super().__init__(args, is_regression)
@@ -58,7 +45,7 @@ class TabICLMethod(Method):
                 self.N_test,self.C_test = N_test['test'],None
             self.y_test = y_test['test']
 
-    def construct_model(self, model_config = None,cat_indices=[]):
+    def construct_model(self, model_config = None,cat_indices=None):
             from TALENT.model.lib.tabicl.classifier import TabICLClassifier
             from TALENT.model.method_registry import resolve_bundled_path
             # Use bundled checkpoint if present; otherwise the TabICL library
@@ -105,18 +92,10 @@ class TabICLMethod(Method):
         else:
             sampled_X = self.N['train']
 
-        # Optional sample_size cap — TabICL keeps the full train set in-context,
-        # which can OOM on big datasets. Configurable via config['general']['sample_size'].
-        general = self.args.config.get('general', {}) or {}
-        sample_size = general.get('sample_size', None)
-        if sample_size is not None and sampled_X.shape[0] > sample_size:
-            from sklearn.model_selection import train_test_split
-            sampled_X, _, sampled_Y, _ = train_test_split(
-                sampled_X, sampled_Y,
-                train_size=sample_size,
-                stratify=sampled_Y,
-                random_state=self.args.seed,
-            )
+        # Row cap — TabICL keeps the full train set in-context, which can OOM
+        # on big datasets. config['general']['sample_size'] override, else the
+        # registry's train_row_limit.
+        sampled_X, sampled_Y = self.subsample_train_rows(sampled_X, sampled_Y)
         self.sampled_X = sampled_X
         self.sampled_Y = sampled_Y
         self.construct_model(cat_indices=cat_indices)

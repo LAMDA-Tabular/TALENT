@@ -92,7 +92,7 @@ class TransformerEncoderLayer(Module):
             eval_tokens_src = src_[num_global_tokens+num_train_tokens:]
 
 
-            attn = partial(checkpoint, self.self_attn) if self.recompute_attn else self.self_attn
+            attn = partial(checkpoint, self.self_attn, use_reentrant=False) if self.recompute_attn else self.self_attn
 
             global_tokens_src2 = attn(global_tokens_src, global_and_train_tokens_src, global_and_train_tokens_src, None, True, global_src_mask)[0]
             train_tokens_src2 = attn(train_tokens_src, global_tokens_src, global_tokens_src, None, True, trainset_src_mask)[0]
@@ -109,7 +109,7 @@ class TransformerEncoderLayer(Module):
             src2 = torch.cat([src_left, src_right], dim=0)
         else:
             if self.recompute_attn:
-                src2 = checkpoint(self.self_attn, src_, src_, src_, src_key_padding_mask, True, src_mask)[0]
+                src2 = checkpoint(self.self_attn, src_, src_, src_, src_key_padding_mask, True, src_mask, use_reentrant=False)[0]
             else:
                 src2 = self.self_attn(src_, src_, src_, attn_mask=src_mask,
                                       key_padding_mask=src_key_padding_mask)[0]

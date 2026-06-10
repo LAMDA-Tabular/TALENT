@@ -5,7 +5,8 @@ from sklearn.preprocessing import label_binarize
 
 from TALENT.model.utils import (
     set_seeds,
-    get_device
+    get_device,
+    check_softmax
 )
 # from sklearn.externals import joblib
 from TALENT.model.lib.data import (
@@ -17,14 +18,7 @@ from TALENT.model.lib.data import (
     data_label_process,
 )
 
-def check_softmax(logits):
-    # Check if any values are outside the [0, 1] range and Ensure they sum to 1
-    if np.any((logits < 0) | (logits > 1)) or (not np.allclose(logits.sum(axis=-1), 1, atol=1e-5)):
-        exps = np.exp(logits - np.max(logits, axis=1, keepdims=True))  # stabilize by subtracting max
-        return exps / np.sum(exps, axis=1, keepdims=True)
-    else:
-        return logits
-    
+
 class classical_methods(object, metaclass=abc.ABCMeta):
     def __init__(self, args, is_regression):
         self.args = args
