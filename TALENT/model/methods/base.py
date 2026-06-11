@@ -391,7 +391,7 @@ class Method(object, metaclass=abc.ABCMeta):
                 hard_preds = predictions.argmax(axis=-1)
             accuracy = skm.accuracy_score(labels, hard_preds)
             avg_recall = skm.balanced_accuracy_score(labels, hard_preds)
-            avg_precision = skm.precision_score(labels, hard_preds, average='macro')
+            avg_precision = skm.precision_score(labels, hard_preds, average='macro', zero_division=0)
             f1_score = skm.f1_score(labels, hard_preds, average='binary')
             log_loss = skm.log_loss(labels, predictions, labels=y_info['classes'])
             auc = skm.roc_auc_score(labels, predictions[:, 1], labels=y_info['classes']) if len(np.unique(labels)) == 2 else float("nan")
@@ -409,7 +409,7 @@ class Method(object, metaclass=abc.ABCMeta):
             hard_preds = predictions.argmax(axis=-1)
             accuracy = skm.accuracy_score(labels, hard_preds)
             avg_recall = skm.balanced_accuracy_score(labels, hard_preds)
-            avg_precision = skm.precision_score(labels, hard_preds, average='macro')
+            avg_precision = skm.precision_score(labels, hard_preds, average='macro', zero_division=0)
             f1_score = skm.f1_score(labels, hard_preds, average='macro')
             log_loss = skm.log_loss(labels, predictions, labels=y_info['classes'])
 

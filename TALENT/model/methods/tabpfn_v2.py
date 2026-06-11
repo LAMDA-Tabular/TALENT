@@ -104,6 +104,21 @@ class TabPFNMethod(Method):
         self.fit_time = 0  # general model does not require fitting
 
 
+    # Test rows are scored independently (the in-context set is the training
+    # data), so chunked inference is prediction-identical. Chunking bounds the
+    # feature-attention CUDA kernel batch, which otherwise fails with
+    # "invalid configuration argument" on wide datasets with many test rows.
+    PREDICT_CHUNK_ROWS = 8192
+
+    def _predict_in_chunks(self, predict_fn, X):
+        n_rows = X.shape[0]
+        chunk = self.PREDICT_CHUNK_ROWS
+        if n_rows <= chunk:
+            return predict_fn(X)
+        outputs = [predict_fn(X[start:start + chunk])
+                   for start in range(0, n_rows, chunk)]
+        return np.concatenate(outputs, axis=0)
+
     def predict(self, data, info, model_name):
         N, C, y = data
         self.data_format(False, N, C, y)
@@ -113,12 +128,12 @@ class TabPFNMethod(Method):
             Test_X = self.C_test
         else:
             Test_X = self.N_test
-        
+
         tic = time.time()
         if self.is_regression:
-            test_logit = self.model.predict(Test_X)
+            test_logit = self._predict_in_chunks(self.model.predict, Test_X)
         else:
-            test_logit = self.model.predict_proba(Test_X)
+            test_logit = self._predict_in_chunks(self.model.predict_proba, Test_X)
         self.predict_time = time.time() - tic
         
         test_label = self.y_test
