@@ -116,7 +116,9 @@ class TabNetMethod(Method):
         tic = time.time()
         if self.is_regression:
             task_type = "regression"
-            test_logit = self.model.predict(self.N_test)
+            # TabNetRegressor returns (N, 1); flatten so the MSE loss below
+            # does not broadcast against the (N,) labels.
+            test_logit = self.model.predict(self.N_test).reshape(-1)
         else:
             task_type = "classification"
             test_logit = self.model.predict_proba(self.N_test)

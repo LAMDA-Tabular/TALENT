@@ -87,7 +87,10 @@ class GrowNetMethod(Method):
                     middle_feat, out = self.model.forward(X_num, X_cat)
                     out = torch.as_tensor(out, dtype=torch.float64).cuda().view(-1, 1)
                     if self.is_regression:
-                        grad_direction = -(out - y)
+                        # y is (B,) while out is (B,1): without the view the
+                        # subtraction broadcasts to (B,B) and the MSE below is
+                        # computed over wrong sample pairs.
+                        grad_direction = -(out - y.view(-1, 1))
                         _, out = m(self.model.embed_input(X_num, X_cat), middle_feat)
                         out = torch.as_tensor(out, dtype=torch.float64).cuda().view(-1, 1)
                         loss = self.loss_f1(self.model.boost_rate * out, grad_direction)
