@@ -11,13 +11,7 @@ from TALENT.model.lib.data import (
 )
 import time
 
-
-def check_softmax(logits):
-    """Convert raw logits to probabilities if not already in [0, 1] summing to 1."""
-    if np.any((logits < 0) | (logits > 1)) or (not np.allclose(logits.sum(axis=-1), 1, atol=1e-5)):
-        exps = np.exp(logits - np.max(logits, axis=1, keepdims=True))
-        return exps / np.sum(exps, axis=1, keepdims=True)
-    return logits
+from TALENT.model.utils import check_softmax
 
 
 class TabICLv2Method(Method):
@@ -126,23 +120,10 @@ class TabICLv2Method(Method):
         else:
             sampled_X = self.N['train']
 
-        # Optional sample_size cap, since TabICL keeps all training rows in-context.
-        general = self.args.config.get('general', {}) or {}
-        sample_size = general.get('sample_size', None)
-        if sample_size is not None and sampled_X.shape[0] > sample_size:
-            if not self.is_regression:
-                from sklearn.model_selection import train_test_split
-                sampled_X, _, sampled_Y, _ = train_test_split(
-                    sampled_X, sampled_Y,
-                    train_size=sample_size,
-                    stratify=sampled_Y,
-                    random_state=self.args.seed,
-                )
-            else:
-                rng = np.random.RandomState(self.args.seed)
-                idx = rng.choice(sampled_X.shape[0], size=sample_size, replace=False)
-                sampled_X = sampled_X[idx]
-                sampled_Y = sampled_Y[idx]
+        # Row cap, since TabICL keeps all training rows in-context.
+        # config['general']['sample_size'] override, else the registry's
+        # train_row_limit.
+        sampled_X, sampled_Y = self.subsample_train_rows(sampled_X, sampled_Y)
 
         self.sampled_X = sampled_X
         self.sampled_Y = sampled_Y

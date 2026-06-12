@@ -11,7 +11,8 @@ from TALENT.model.utils import (
     Timer,
     Averager,
     set_seeds,
-    get_device
+    get_device,
+    check_softmax
 )
 
 from TALENT.model.lib.data import (
@@ -24,21 +25,6 @@ from TALENT.model.lib.data import (
     data_loader_process,
     get_categories
 )
-
-
-def check_softmax(logits):
-    """
-    Check if the logits are already probabilities, and if not, convert them to probabilities.
-    
-    :param logits: np.ndarray of shape (N, C) with logits
-    :return: np.ndarray of shape (N, C) with probabilities
-    """
-    # Check if any values are outside the [0, 1] range and Ensure they sum to 1
-    if np.any((logits < 0) | (logits > 1)) or (not np.allclose(logits.sum(axis=-1), 1, atol=1e-5)):
-        exps = np.exp(logits - np.max(logits, axis=1, keepdims=True))  # stabilize by subtracting max
-        return exps / np.sum(exps, axis=1, keepdims=True)
-    else:
-        return logits
 
 
 class Method(object, metaclass=abc.ABCMeta):
@@ -91,6 +77,54 @@ class Method(object, metaclass=abc.ABCMeta):
             self.trlog['best_res'] = 1e10
         else:
             self.trlog['best_res'] = 0
+
+
+    def resolve_sample_size(self):
+        """
+        Resolve the effective training-row cap for this method.
+
+        An explicit ``config['general']['sample_size']`` takes precedence as a
+        per-run override; otherwise the method's ``train_row_limit`` from the
+        method registry applies (the single source of truth for row limits).
+        Returns None when neither is set (no cap).
+        """
+        general = self.args.config.get('general', {}) or {}
+        sample_size = general.get('sample_size')
+        if sample_size is not None:
+            return sample_size
+        from TALENT.model.method_registry import get_method_spec
+        try:
+            return get_method_spec(self.args.model_type).train_row_limit
+        except (KeyError, AttributeError):
+            return None
+
+
+    def subsample_train_rows(self, X, y):
+        """
+        Cap the training rows at ``resolve_sample_size()`` rows.
+
+        Classification subsamples stratified by label to keep class
+        proportions; regression takes a uniform random subset. Both are
+        seeded with ``args.seed`` for reproducibility. Returns (X, y)
+        unchanged when no cap applies.
+        """
+        sample_size = self.resolve_sample_size()
+        if sample_size is None or X.shape[0] <= sample_size:
+            return X, y
+        if not self.is_regression:
+            from sklearn.model_selection import train_test_split
+            X, _, y, _ = train_test_split(
+                X, y,
+                train_size=sample_size,
+                stratify=y,
+                random_state=self.args.seed,
+            )
+        else:
+            rng = np.random.RandomState(self.args.seed)
+            idx = rng.choice(X.shape[0], size=sample_size, replace=False)
+            X = X[idx]
+            y = y[idx]
+        return X, y
 
 
     def data_format(self, is_train = True, N = None, C = None, y = None):
@@ -357,7 +391,7 @@ class Method(object, metaclass=abc.ABCMeta):
                 hard_preds = predictions.argmax(axis=-1)
             accuracy = skm.accuracy_score(labels, hard_preds)
             avg_recall = skm.balanced_accuracy_score(labels, hard_preds)
-            avg_precision = skm.precision_score(labels, hard_preds, average='macro')
+            avg_precision = skm.precision_score(labels, hard_preds, average='macro', zero_division=0)
             f1_score = skm.f1_score(labels, hard_preds, average='binary')
             log_loss = skm.log_loss(labels, predictions, labels=y_info['classes'])
             auc = skm.roc_auc_score(labels, predictions[:, 1], labels=y_info['classes']) if len(np.unique(labels)) == 2 else float("nan")
@@ -375,7 +409,7 @@ class Method(object, metaclass=abc.ABCMeta):
             hard_preds = predictions.argmax(axis=-1)
             accuracy = skm.accuracy_score(labels, hard_preds)
             avg_recall = skm.balanced_accuracy_score(labels, hard_preds)
-            avg_precision = skm.precision_score(labels, hard_preds, average='macro')
+            avg_precision = skm.precision_score(labels, hard_preds, average='macro', zero_division=0)
             f1_score = skm.f1_score(labels, hard_preds, average='macro')
             log_loss = skm.log_loss(labels, predictions, labels=y_info['classes'])
 

@@ -3,7 +3,6 @@ import argparse
 import torch
 from tqdm import tqdm
 import numpy as np
-import torch
 
 from TALENT.model.lib.data import (
     Dataset

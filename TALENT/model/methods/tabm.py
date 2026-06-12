@@ -27,22 +27,8 @@ from TALENT.model.lib.data import (
 def loss_fn(_loss_fn,y_pred, y_true):
         return _loss_fn(y_pred.flatten(0, 1), y_true.repeat_interleave(y_pred.shape[1]))
 
-def check_softmax(logits):
-    """
-    Check if the logits are already probabilities, and if not, convert them to probabilities.
-    
-    :param logits: np.ndarray of shape (N, C) with logits
-    :return: np.ndarray of shape (N, C) with probabilities
-    """
-    # Check if any values are outside the [0, 1] range and Ensure they sum to 1
-    if np.any((logits < 0) | (logits > 1)) or (not np.allclose(logits.sum(axis=-1), 1, atol=1e-5)):
-        exps = np.exp(logits - np.max(logits, axis=1, keepdims=True))  # stabilize by subtracting max
-        return exps / np.sum(exps, axis=1, keepdims=True)
-    else:
-        return logits
-
-
 from TALENT.model.methods.base import Method
+from TALENT.model.utils import check_softmax
 
 class TabMMethod(Method):
     def __init__(self, args, is_regression):

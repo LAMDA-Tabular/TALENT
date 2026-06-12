@@ -3,7 +3,6 @@
         "model": {},
         "training": {},
         "general": {
-            "sample_size": 60000,
             "n_estimators": 32,
             "batch_size": 8,
             "use_amp": true,

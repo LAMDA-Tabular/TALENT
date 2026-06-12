@@ -1,7 +1,6 @@
 from TALENT.model.methods.base import Method
 import torch
 import numpy as np
-import torch
 import torch.nn.functional as F
 
 from TALENT.model.lib.data import (
@@ -74,6 +73,10 @@ class MitraMethod(Method):
         else:
             x_support = self.N['train']
         
+        # Row cap: config['general']['sample_size'] override, else the
+        # registry's train_row_limit (Mitra attends over the full support set).
+        x_support, y_support = self.subsample_train_rows(x_support, y_support)
+
         x_support = x_support.astype(np.float32)
         y_support = y_support.astype(np.float32 if self.is_regression else np.int64)
 
@@ -102,8 +105,9 @@ class MitraMethod(Method):
         n_obs_query = x_query.shape[0]
         n_feat = self.x_support.shape[1]
         
-        max_samples_support = self.args.config['general']['max_samples_support']
-        max_samples_query = self.args.config['general']['max_samples_query']
+        general = self.args.config.get('general', {}) or {}
+        max_samples_support = general.get('max_samples_support', 8192)
+        max_samples_query = general.get('max_samples_query', 1024)
 
         if n_obs_support > max_samples_support:
             idx = torch.randperm(n_obs_support)[:max_samples_support] 

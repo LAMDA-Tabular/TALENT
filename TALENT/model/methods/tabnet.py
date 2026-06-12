@@ -1,6 +1,5 @@
 from TALENT.model.methods.base import Method
 import torch
-import torch
 import torch.nn.functional as F
 
 from TALENT.model.lib.data import (

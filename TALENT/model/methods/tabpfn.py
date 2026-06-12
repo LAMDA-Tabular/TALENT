@@ -1,7 +1,6 @@
 from TALENT.model.methods.base import Method
 import torch
 import numpy as np
-import torch
 import torch.nn.functional as F
 
 from TALENT.model.lib.data import (
@@ -63,11 +62,9 @@ class TabPFNMethod(Method):
             sampled_X = self.C['train']
         else:
             sampled_X = self.N['train']
-        sample_size = self.args.config['general']['sample_size']
-        if self.y['train'].shape[0] > sample_size:
-        # sampled_X and sampled_Y contain sample_size samples maintaining class proportions for the training set
-            from sklearn.model_selection import train_test_split
-            sampled_X, _, sampled_Y, _ = train_test_split(sampled_X, sampled_Y, train_size=sample_size, stratify=sampled_Y)
+        # Row cap: config['general']['sample_size'] override, else the
+        # registry's train_row_limit. Stratified to keep class proportions.
+        sampled_X, sampled_Y = self.subsample_train_rows(sampled_X, sampled_Y)
         self.model.fit(sampled_X, sampled_Y, overwrite_warning=True)
         self.fit_time = 0  # general model does not require fitting
     

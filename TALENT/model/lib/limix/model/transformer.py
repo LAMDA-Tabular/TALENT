@@ -252,7 +252,7 @@ class FeaturesTransformer(nn.Module):
         return data
     
     def add_embeddings(self, x:torch.Tensor):
-        with torch.cuda.amp.autocast(enabled=False):
+        with torch.amp.autocast("cuda", enabled=False):
             embs = torch.randn(
                 (x.shape[2], x.shape[3] // 4),
                 device=x.device,

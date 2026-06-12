@@ -1,7 +1,6 @@
 from TALENT.model.methods.base import Method
 import torch
 import numpy as np
-import torch
 import torch.nn.functional as F
 
 from TALENT.model.lib.data import (
@@ -41,7 +40,8 @@ class TabPFNMethod(Method):
             self.y_test = y_test['test']
 
 
-    def construct_model(self, model_config = None,cat_indices=[]):
+    def construct_model(self, model_config = None,cat_indices=None):
+        cat_indices = cat_indices or []
         from TALENT.model.method_registry import resolve_bundled_path
         if self.is_regression:
             from TALENT.model.models.tabpfn_v2 import TabPFNRegressor
@@ -91,13 +91,33 @@ class TabPFNMethod(Method):
             cat_indices = [i for i in range(self.C['train'].shape[1])]
         else:
             sampled_X = self.N['train']
-        sample_size = self.args.config['general']['sample_size']
+        # Row cap: config['general']['sample_size'] override, else the
+        # registry's train_row_limit. The TabPFN v2 wrapper subsamples
+        # internally, so the cap is forwarded to model.fit().
+        sample_size = self.resolve_sample_size()
+        if sample_size is None:
+            sample_size = sampled_X.shape[0]
         self.sampled_X = sampled_X
         self.sampled_Y = sampled_Y
         self.construct_model(cat_indices=cat_indices)
         self.model.fit(sampled_X,sampled_Y,sample_size)
         self.fit_time = 0  # general model does not require fitting
 
+
+    # Test rows are scored independently (the in-context set is the training
+    # data), so chunked inference is prediction-identical. Chunking bounds the
+    # feature-attention CUDA kernel batch, which otherwise fails with
+    # "invalid configuration argument" on wide datasets with many test rows.
+    PREDICT_CHUNK_ROWS = 8192
+
+    def _predict_in_chunks(self, predict_fn, X):
+        n_rows = X.shape[0]
+        chunk = self.PREDICT_CHUNK_ROWS
+        if n_rows <= chunk:
+            return predict_fn(X)
+        outputs = [predict_fn(X[start:start + chunk])
+                   for start in range(0, n_rows, chunk)]
+        return np.concatenate(outputs, axis=0)
 
     def predict(self, data, info, model_name):
         N, C, y = data
@@ -108,12 +128,12 @@ class TabPFNMethod(Method):
             Test_X = self.C_test
         else:
             Test_X = self.N_test
-        
+
         tic = time.time()
         if self.is_regression:
-            test_logit = self.model.predict(Test_X)
+            test_logit = self._predict_in_chunks(self.model.predict, Test_X)
         else:
-            test_logit = self.model.predict_proba(Test_X)
+            test_logit = self._predict_in_chunks(self.model.predict_proba, Test_X)
         self.predict_time = time.time() - tic
         
         test_label = self.y_test

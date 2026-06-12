@@ -257,6 +257,8 @@ for s in TALENT.list_methods(
 
 Both the CLI scripts and the Python API are backed by the same `MethodSpec` registry, so adding a new method requires only a single registry entry (see `TALENT/model/method_registry.py`).
 
+The registry is also the single source of truth for foundation-model training-row caps (`train_row_limit`): TabPFN 1k, TabPFN v2 / Real-TabPFN / Mitra 10k, TabPFN v2.5 50k, TabICL 500k, TabPFN v3 / TabICL v2 1M, TabDPT unlimited. The cap is applied automatically when fitting; setting `config['general']['sample_size']` overrides it for a single run.
+
 
 
 > For researchers:

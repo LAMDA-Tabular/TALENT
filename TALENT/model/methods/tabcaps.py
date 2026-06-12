@@ -1,6 +1,5 @@
 from TALENT.model.methods.base import Method
 import torch
-import torch
 import os.path as osp
 import torch.nn.functional as F
 import numpy as np
