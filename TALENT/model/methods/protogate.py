@@ -53,15 +53,18 @@ class ProtoGateMethod(Method):
         if config is not None:
             self.reset_stats_withconfig(config)
         self.data_format(is_train = True)
-        self.X_train = self.N['train'] 
-        self.y_neighbour = torch.tensor(self.y['train'])
+        self.X_train = self.N['train']
+        self.y_neighbour = self.y['train'].detach().clone()
         self.construct_model()
         self.optimizer = torch.optim.AdamW(
             self.model.parameters(), 
             lr=self.args.config['training']['lr'], 
             weight_decay=self.args.config['training']['weight_decay']
         )
-        self.feature_selection = self.args.config['model']['feature_selection'] if 'feature_selection' in self.args.config['training'].items() else True
+        # Note: `in dict.items()` would always be False (items are key-value
+        # tuples), so the config value was never read; the key lives in
+        # config['training'] (see utils.py default_para handling).
+        self.feature_selection = self.args.config['training'].get('feature_selection', True)
         self.pred_k = self.args.config['training']['pred_k']
         self.lam = self.args.config['training']['lam']
         self.sigma = self.args.config['model']['sigma']
@@ -110,7 +113,7 @@ class ProtoGateMethod(Method):
                     X_num, X_cat = X, None  
                         
                 x_selected, self.alpha, self.stochastic_gate = self.model(X_num)
-                x_neighbour_selected, _, _ = self.model(torch.tensor(self.X_train).to(x_selected.device))
+                x_neighbour_selected, _, _ = self.model(self.X_train.detach().clone().to(x_selected.device))
                 y_neighbour = self.y_neighbour.to(x_selected.device)
                 y_neighbour = F.one_hot(y_neighbour, num_classes=self.d_out)
 
@@ -181,7 +184,7 @@ class ProtoGateMethod(Method):
                 else:
                     X_num, X_cat = X, None                            
                 x_selected, self.alpha, self.stochastic_gate = self.model(X_num)
-                x_neighbour_selected, _, _ = self.model(torch.tensor(self.X_train).to(x_selected.device))
+                x_neighbour_selected, _, _ = self.model(self.X_train.detach().clone().to(x_selected.device))
                 y_neighbour = self.y_neighbour.to(x_selected.device)
                 y_neighbour = F.one_hot(y_neighbour, num_classes=self.d_out)
 

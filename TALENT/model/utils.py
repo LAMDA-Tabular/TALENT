@@ -573,7 +573,7 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info):
                 2,
                 256
             ]
-        except:
+        except KeyError:
             opt_space[args.model_type]['fit']['n_bins'] = [
                 "int",
                 2,
