@@ -23,7 +23,7 @@ class LogRegMethod(classical_methods):
             return
         tic = time.time()
         self.model.fit(self.N['train'], self.y['train'])
-        self.trlog['best_res'] = self.model.score(self.N['val'], self.y['val'])
+        self._record_best_res(self.N['val'])
         time_cost = time.time() - tic
         with open(ops.join(self.args.save_path , 'best-val-{}.pkl'.format(self.args.seed)), 'wb') as f:
             pickle.dump(self.model, f)

@@ -265,8 +265,11 @@ class GRANDEMethod(Method):
 
         print('epoch {}, val, loss={:.4f} {} result={:.4f}'.format(epoch, vl, task_type, vres[0]))
 
-        if measure(vres[0], self.trlog['best_res']) or epoch == 0:
-            self.trlog['best_res'] = vres[0]
+        from TALENT.model.lib.tuning_metric import select_objective
+        _score, _higher = select_objective(vres, metric_name, self.args, self.is_regression)
+        measure = np.greater_equal if _higher else np.less_equal
+        if measure(_score, self.trlog['best_res']) or epoch == 0:
+            self.trlog['best_res'] = _score
             self.trlog['best_epoch'] = epoch
             torch.save(
                 dict(params=self.model.state_dict()),
