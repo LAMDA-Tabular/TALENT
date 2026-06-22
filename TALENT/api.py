@@ -310,6 +310,7 @@ def build_args(
     except Exception:
         pass
 
+    base.setdefault("tune_metric", None)
     args = SimpleNamespace(**base)
 
     # Validate so we fail with a readable message rather than an obscure assert.
@@ -351,6 +352,7 @@ def run(
     verbose: bool = False,
     tune_threshold: bool = True,
     threshold_metric: str = "f1",
+    tune_metric: Optional[str] = None,
     **arg_overrides,
 ) -> RunResult:
     """Fit a TALENT method on ``train_val_data`` and predict on ``test_data``.
@@ -399,6 +401,14 @@ def run(
         on regression or multiclass tasks.
     threshold_metric : {"f1", "accuracy", "precision", "recall", "balanced_accuracy"}
         Which metric to optimise when tuning the threshold. Default ``"f1"``.
+    tune_metric : str, optional
+        Metric optimised during hyper-parameter search (e.g. ``"AUC"``,
+        ``"R2"``, ``"RMSE"``, ``"LogLoss"``). ``None`` (default) keeps TALENT's
+        historical HPO objective (validation Accuracy for classification,
+        MAE/RMSE for regression). See
+        ``TALENT.model.lib.tuning_metric.supported_tune_metrics()``. Not
+        supported for methods that tune on an internal loss (``tabnet``,
+        ``ptarl``, ``tabcaps``).
     **arg_overrides
         Passed through to :func:`build_args`.
 
@@ -414,6 +424,11 @@ def run(
             f"Set tune=False or pick a tunable method."
         )
 
+    from TALENT.model.lib.tuning_metric import (
+        validate_tune_metric, assert_tune_metric_supported,
+    )
+    validate_tune_metric(tune_metric)
+
     # Build args if not provided
     if args is None:
         args = build_args(
@@ -424,6 +439,7 @@ def run(
             seed_num=seed_num,
             tune=tune,
             n_trials=n_trials,
+            tune_metric=tune_metric,
             **arg_overrides,
         )
     else:
@@ -433,6 +449,8 @@ def run(
         if save_path is not None:
             args.save_path = save_path
             os.makedirs(save_path, exist_ok=True)
+        if tune_metric is not None:
+            args.tune_metric = tune_metric
 
     # Lazy imports — we don't want to drag torch in just for `list_methods()`.
     import torch
@@ -461,6 +479,7 @@ def run(
 
     # Optional HPO. The current `tune_hyper_parameters` mutates args.config.
     if tune and spec.supports_hpo:
+        assert_tune_metric_supported(model_type, args)
         # Load opt_space — required by tune_hyper_parameters
         _, opt_space = _try_load_method_config(model_type)
         if not opt_space:

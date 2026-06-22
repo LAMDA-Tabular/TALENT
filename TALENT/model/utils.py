@@ -313,6 +313,9 @@ def get_classical_args():
 
     # other choices
     parser.add_argument('--n_trials', type=int, default=default_args['n_trials'])
+    parser.add_argument('--tune_metric', type=str, default=None,
+                        help="HPO objective metric (e.g. AUC, R2, RMSE, LogLoss). "
+                             "None keeps the legacy default (Accuracy / MAE-RMSE).")
     parser.add_argument('--seed_num', type=int, default=default_args['seed_num'])
     parser.add_argument('--gpu', default=default_args['gpu'])
     parser.add_argument('--tune', action='store_true', default=default_args['tune'])
@@ -399,6 +402,9 @@ def get_deep_args():
 
     # other choices
     parser.add_argument('--n_trials', type=int, default=default_args['n_trials'])
+    parser.add_argument('--tune_metric', type=str, default=None,
+                        help="HPO objective metric (e.g. AUC, R2, RMSE, LogLoss). "
+                             "None keeps the legacy default (Accuracy / MAE-RMSE).")
     parser.add_argument('--seed_num', type=int, default=default_args['seed_num'])
     parser.add_argument('--workers', type=int, default=default_args['workers'])
     parser.add_argument('--gpu', default=default_args['gpu'])
@@ -709,21 +715,24 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info):
             return method.trlog['best_res']
         except Exception as e:
             print(e)
-            return 1e9 if info['task_type'] == 'regression' else 0.0
+            from TALENT.model.lib.tuning_metric import worst_objective_value
+            return worst_objective_value(args, info['task_type'] == 'regression')
 
     if osp.exists(osp.join(args.save_path, '{}-tuned.json'.format(args.model_type))) and args.retune == False:
         with open(osp.join(args.save_path, '{}-tuned.json'.format(args.model_type)), 'rb') as fp:
             args.config = json.load(fp)
     else:
-        # get data property
-        if info['task_type'] == 'regression':
-            direction = 'minimize'
+        # get data property. The optimization direction follows the configured
+        # tune_metric (defaults to minimize for regression / maximize for
+        # classification when tune_metric is unset).
+        from TALENT.model.lib.tuning_metric import study_direction
+        is_reg = info['task_type'] == 'regression'
+        direction = study_direction(args, is_reg)
+        if is_reg:
             for key in opt_space[args.model_type]['model'].keys():
                 if 'dropout' in key and '?' not in opt_space[args.model_type]['model'][key][0]:
                     opt_space[args.model_type]['model'][key][0] = '?' + opt_space[args.model_type]['model'][key][0]
                     opt_space[args.model_type]['model'][key].insert(1, 0.0)
-        else:
-            direction = 'maximize'
 
         method = get_method(args.model_type)(args, info['task_type'] == 'regression')
 

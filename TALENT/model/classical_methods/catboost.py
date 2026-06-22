@@ -75,12 +75,7 @@ class CatBoostMethod(classical_methods):
         fit_config['eval_set'] = (X_val, self.y['val'])
         tic = time.time()
         self.model.fit(X_train, self.y['train'],**fit_config)
-        if not self.is_regression:
-            y_pred_val = self.model.predict(X_val)
-            self.trlog['best_res'] = accuracy_score(self.y['val'], y_pred_val) 
-        else:
-            y_pred_val = self.model.predict(X_val)
-            self.trlog['best_res'] = mean_squared_error(self.y['val'], y_pred_val) ** 0.5 * self.y_info['std']
+        self._record_best_res(X_val)
         time_cost = time.time() - tic
         with open(ops.join(self.args.save_path , 'best-val-{}.pkl'.format(self.args.seed)), 'wb') as f:
             pickle.dump(self.model, f)

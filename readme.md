@@ -239,6 +239,29 @@ print("Mean metrics:", dict(zip(result.metric_names, result.metrics_mean)))
 print("Std metrics:",  dict(zip(result.metric_names, result.metrics_std)))
 ```
 
+#### Choosing the HPO objective metric
+
+By default the hyperparameter search optimizes TALENT's historical objective
+(validation **Accuracy** for classification, **MAE / RMSE** for regression).
+Pass `tune_metric` to optimize any metric that `Method.metric` reports instead;
+the optimization direction is inferred automatically.
+
+```python
+# Tune on ROC-AUC (classification) or R2 (regression) rather than the default
+result = TALENT.run("catboost", train_val, test, info,
+                    tune=True, n_trials=50, tune_metric="AUC")
+
+from TALENT.model.lib.tuning_metric import supported_tune_metrics
+print(supported_tune_metrics())
+# ('Accuracy', 'Avg_Recall', 'Avg_Precision', 'F1', 'AUC',
+#  'LogLoss', 'Brier', 'ECE', 'R2', 'MAE', 'RMSE')
+```
+
+`tune_metric` is also exposed on the CLI (`--tune_metric AUC`). It defaults to
+`None`, which preserves the previous behavior exactly. A few methods optimize an
+internal training loss and do not accept it (`tabnet`, `ptarl`, `tabcaps`); use
+the default for those.
+
 Introspect or filter methods via the unified registry:
 
 ```python

@@ -122,7 +122,8 @@ class RealMLPMethod(Method):
         test_label = torch.from_numpy(test_label)
         
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
-        self.trlog['best_res'] = vres[0]
+        from TALENT.model.lib.tuning_metric import select_objective
+        self.trlog['best_res'], _ = select_objective(vres, metric_name, self.args, self.is_regression)
 
 
     def predict(self, data, info, model_name):

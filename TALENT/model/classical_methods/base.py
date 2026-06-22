@@ -82,6 +82,35 @@ class classical_methods(object, metaclass=abc.ABCMeta):
         set_seeds(self.args.seed)
         self.config = self.args.config = config
 
+    def _val_proba(self, X):
+        """Validation-set class probabilities used for HPO metric selection.
+
+        Defaults to the fitted estimator's ``predict_proba``; subclasses
+        without one should override (e.g. distance-based ``NearestCentroid``).
+        """
+        return self.model.predict_proba(X)
+
+    def _record_best_res(self, val_features):
+        """Set ``trlog['best_res']`` for HPO, honouring ``args.tune_metric``.
+
+        With no ``tune_metric`` configured the historical behaviour is kept
+        exactly (validation accuracy for classification, std-scaled RMSE for
+        regression). Otherwise the configured metric is read from ``metric()``.
+        """
+        from TALENT.model.lib.tuning_metric import resolve_tune_metric, select_objective
+        from sklearn.metrics import accuracy_score, mean_squared_error
+        y_val = self.y['val']
+        if resolve_tune_metric(self.args) is None:
+            y_pred = self.model.predict(val_features)
+            if self.is_regression:
+                self.trlog['best_res'] = mean_squared_error(y_val, y_pred) ** 0.5 * self.y_info['std']
+            else:
+                self.trlog['best_res'] = accuracy_score(y_val, y_pred)
+            return
+        logit = self.model.predict(val_features) if self.is_regression else self._val_proba(val_features)
+        vres, names = self.metric(logit, y_val, self.y_info)
+        self.trlog['best_res'], _ = select_objective(vres, names, self.args, self.is_regression)
+
     def metric(self, predictions, labels, y_info, threshold=None):
         """Compute evaluation metrics.
 
