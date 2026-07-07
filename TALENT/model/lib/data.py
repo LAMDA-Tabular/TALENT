@@ -320,9 +320,10 @@ def data_enc_process(N_data, C_data, cat_policy, y_train = None, ord_encoder = N
             for column_idx in range(C_data['test'].shape[1]):
                 C_data['test'][:, column_idx][C_data['test'][:, column_idx] == unknown_value] = mode_values[column_idx]
         elif 'val' in C_data.keys():
-            mode_values = [np.argmax(np.bincount(column[column != unknown_value]))
-                        if np.any(column == unknown_value) else column[0]
-                        for column in C_data['train'].T]
+            mode_values = []
+            for column in C_data['train'].T:
+                known_values = column[column != unknown_value].astype(np.int64)
+                mode_values.append(int(np.argmax(np.bincount(known_values))))
             for column_idx in range(C_data['val'].shape[1]):
                 C_data['val'][:, column_idx][C_data['val'][:, column_idx] == unknown_value] = mode_values[column_idx]
 
@@ -439,6 +440,8 @@ def data_label_process(y_data, is_regression, info = None, encoder = None):
             mean, std = y_data['train'].mean(), y_data['train'].std()
         else:
             mean, std = info['mean'], info['std']
+        if std == 0:
+            std = 1.0
         y = {k: (v - mean) / std for k, v in y.items()}
         info = {'policy': 'mean_std', 'mean': mean, 'std': std}
         return y, info, None

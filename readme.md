@@ -80,6 +80,7 @@ Welcome to **TALENT**, a benchmark with a comprehensive machine learning toolbox
 
 ## 📰 What's New
 
+- [2026-07]🌟 Add **[TabFM](https://github.com/google-research/tabfm)** (Google Research, zero-shot tabular foundation model) as an optional method via `pip install -U "tabfm[pytorch]"`.
 - [2026-06]🌟 Add **[TabPFN v2.5](https://arxiv.org/abs/2511.08667)** (PriorLabs, Nov 2025) and **[TabDPT](https://github.com/layer6ai-labs/TabDPT-inference)** (Layer 6 AI, ICL + retrieval). TALENT now ships the full TabPFN family (v1, v2, v2.5, v3) plus TabDPT alongside the other tabular foundation models.
 - [2026-06]🌟 Evaluation improvements: **calibration metrics** (Brier, ECE) are now reported by default for every classifier, **decision thresholds** are tuned on the validation set for binary classification (used for Accuracy/F1/Precision/Recall; threshold-independent metrics like AUC/LogLoss/Brier/ECE are unaffected), and `RunResult` exposes a uniform `predict_proba`/`predict_labels` interface regardless of whether the underlying method natively returns logits or probabilities. Bundled checkpoints are now resolved via `importlib.resources` so methods work from any working directory.
 - [2026-05]🌟 Add [TabPFN v3](https://github.com/PriorLabs/TabPFN) (PriorLabs 2026) and [TabICL v2](https://github.com/soda-inria/tabicl) (ICML 2026, regression support added).
@@ -159,6 +160,7 @@ TALENT integrates an extensive array of 30+ deep learning architectures for tabu
 42. **[TabICL v2](https://github.com/soda-inria/tabicl)**: TabICL v2 (ICML 2026), now supporting both classification and regression (via `TabICLRegressor`), with native quantile regression. Requires `pip install -U 'tabicl>=2.0.0'`.
 43. **[TabPFN v2.5](https://arxiv.org/abs/2511.08667)**: TabPFN v2.5 (PriorLabs, Nov 2025), the intermediate release between v2 and v3. Scales in-context learning to ~50k rows × 2k features. Requires `pip install -U 'tabpfn>=8.0.0'`.
 44. **[TabDPT](https://github.com/layer6ai-labs/TabDPT-inference)**: A tabular foundation model from Layer 6 AI that combines in-context learning with retrieval and self-supervised pre-training on real data, removing fixed context-size limits. Requires `pip install -U tabdpt`.
+45. **[TabFM](https://github.com/google-research/tabfm)**: Google's zero-shot tabular foundation model for classification and regression, using in-context learning over training rows as context. Requires `pip install -U "tabfm[pytorch]"`; the upstream model weights use the TabFM Non-Commercial License.
 
 
 🔧 If you want to check the **default hyperparameters and hyperparameter search spaces** of all methods, please visit:  
@@ -280,7 +282,7 @@ for s in TALENT.list_methods(
 
 Both the CLI scripts and the Python API are backed by the same `MethodSpec` registry, so adding a new method requires only a single registry entry (see `TALENT/model/method_registry.py`).
 
-The registry is also the single source of truth for foundation-model training-row caps (`train_row_limit`): TabPFN 1k, TabPFN v2 / Real-TabPFN / Mitra 10k, TabPFN v2.5 50k, TabICL 500k, TabPFN v3 / TabICL v2 1M, TabDPT unlimited. The cap is applied automatically when fitting; setting `config['general']['sample_size']` overrides it for a single run.
+The registry is also the single source of truth for foundation-model training-row caps (`train_row_limit`): TabPFN 1k, TabPFN v2 / Real-TabPFN / Mitra 10k, TabPFN v2.5 50k, TabICL 500k, TabPFN v3 / TabICL v2 1M, TabDPT / TabFM no registry cap. The cap is applied automatically when fitting; setting `config['general']['sample_size']` overrides it for a single run.
 
 
 
@@ -425,6 +427,7 @@ We thank the following repos for providing helpful components/functions in our w
 - [LimiX](https://github.com/limix-ldm/LimiX)
 - [xRFM](https://github.com/dmbeaglehole/xRFM)
 - [TabDPT](https://github.com/layer6ai-labs/TabDPT-inference)
+- [TabFM](https://github.com/google-research/tabfm)
 
 ## 🤗 Contact
 

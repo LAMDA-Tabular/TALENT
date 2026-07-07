@@ -315,8 +315,8 @@ class TabPTMMethod(Method):
 
             num_per_subset = numK // num_class
             remainder = numK % num_class
-            X_meta_new = torch.zeros(batch_size, numK).cuda()
-            label_dist = torch.zeros(batch_size, numK).cuda()
+            X_meta_new = torch.zeros(batch_size, numK, device=X_meta.device)
+            label_dist = torch.zeros(batch_size, numK, device=X_meta.device)
             for i in range(num_class):
                 subset = X_meta_dist[:, i, :].topk(num_per_subset, dim=1, largest=False).values
                 start_idx = i * num_per_subset
@@ -342,9 +342,10 @@ class TabPTMMethod(Method):
 
         X_meta = torch.stack(X_meta_dist_list).permute([1, 0, 2]).unsqueeze(1).expand(-1, num_class, -1, -1)
         label = torch.stack(label_dist_list).permute([1, 0, 2]).unsqueeze(1).expand(-1, num_class, -1, -1)
-        mask_tensor = torch.ones_like(label).cuda() * -1.0
+        mask_tensor = torch.ones_like(label) * -1.0
 
-        mask_tensor[label == torch.arange(num_class).cuda().unsqueeze(0).unsqueeze(2).unsqueeze(3)] = 1.0
+        class_ids = torch.arange(num_class, device=label.device).unsqueeze(0).unsqueeze(2).unsqueeze(3)
+        mask_tensor[label == class_ids] = 1.0
         X_meta = torch.cat((X_meta,mask_tensor),dim=-1)
         return X_meta.double()
 
@@ -429,4 +430,4 @@ class TabPTMMethod(Method):
             self.val_count += 1
             if self.val_count > 20:
                 self.continue_training = False
-        torch.save(self.trlog, osp.join(self.args.save_path, 'trlog'))   
+        torch.save(self.trlog, osp.join(self.args.save_path, 'trlog'))

@@ -328,6 +328,13 @@ _METHODS_DEEP = [
           supports_hpo=False,
           notes="TabDPT (Layer 6 AI). ICL + retrieval; supports both "
                 "classification and regression. External `tabdpt` package."),
+    _spec("tabfm", "TALENT.model.methods.tabfm", "TabFMMethod",
+          _DEEP, _GPU, _PROBS, cat_policy=("indices",),
+          normalization="none", num_policy="none",
+          supports_hpo=False,
+          notes="TabFM v1.0.0 (Google Research). Zero-shot ICL foundation "
+                "model via optional `tabfm[pytorch]`; classification is "
+                "limited to 10 classes by the upstream model."),
 ]
 
 
