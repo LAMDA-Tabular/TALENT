@@ -1,0 +1,15 @@
+{
+    "tabfm": {
+        "model": {},
+        "training": {},
+        "general": {
+            "backend": "pytorch",
+            "n_estimators": 32,
+            "max_num_features": 500,
+            "batch_size": 1,
+            "use_amp": true,
+            "use_cache": true,
+            "ensemble": false
+        }
+    }
+}

@@ -343,10 +343,10 @@ def run(
     *,
     config: Optional[Dict[str, Any]] = None,
     args: Optional[SimpleNamespace] = None,
-    seed: int = 0,
-    seed_num: int = 1,
-    tune: bool = False,
-    n_trials: int = 50,
+    seed: Optional[int] = None,
+    seed_num: Optional[int] = None,
+    tune: Optional[bool] = None,
+    n_trials: Optional[int] = None,
     save_path: Optional[str] = None,
     return_method: bool = False,
     verbose: bool = False,
@@ -372,19 +372,22 @@ def run(
     config : dict, optional
         Method-specific config. If None, the packaged default is used.
     args : SimpleNamespace, optional
-        Pre-built args. If supplied, all of the per-call kwargs below are
-        ignored (you can also pass `seed` to override `args.seed`). Pass
-        the output of :func:`build_args` here when you want fine control.
-    seed : int, default 0
-        Random seed (used when seed_num == 1).
-    seed_num : int, default 1
+        Pre-built args. If supplied, its fields are used as defaults; explicit
+        per-call kwargs below override matching fields. Pass the output of
+        :func:`build_args` here when you want fine control.
+    seed : int, optional
+        Random seed (used when seed_num == 1). Defaults to 0 when `args` is
+        not supplied.
+    seed_num : int, optional
         Run multiple seeds (0..seed_num-1) and aggregate metrics. The
         returned `predictions` are from the *last* seed; per-seed details
-        are in `result.per_seed`.
-    tune : bool, default False
-        If True and the method supports HPO, run Optuna tuning first.
-    n_trials : int, default 50
-        Optuna trial budget (when tune=True).
+        are in `result.per_seed`. Defaults to 1 when `args` is not supplied.
+    tune : bool, optional
+        If True and the method supports HPO, run Optuna tuning first. Defaults
+        to False when `args` is not supplied.
+    n_trials : int, optional
+        Optuna trial budget (when tune=True). Defaults to 50 when `args` is
+        not supplied.
     save_path : str, optional
         Where to save checkpoints / tuned configs. Auto-generated if None.
     return_method : bool, default False
@@ -418,19 +421,13 @@ def run(
     """
     spec = get_method_spec(model_type)
 
-    if tune and not spec.supports_hpo:
-        raise ValueError(
-            f"Method {model_type!r} does not support HPO. "
-            f"Set tune=False or pick a tunable method."
-        )
-
-    from TALENT.model.lib.tuning_metric import (
-        validate_tune_metric, assert_tune_metric_supported,
-    )
-    validate_tune_metric(tune_metric)
-
-    # Build args if not provided
+    # Build args if not provided. With a pre-built args object, preserve its
+    # values unless the caller explicitly passes the matching optional kwarg.
     if args is None:
+        seed = 0 if seed is None else seed
+        seed_num = 1 if seed_num is None else seed_num
+        tune = False if tune is None else tune
+        n_trials = 50 if n_trials is None else n_trials
         args = build_args(
             model_type,
             save_path=save_path,
@@ -446,11 +443,33 @@ def run(
         # Honour late overrides
         if seed is not None:
             args.seed = seed
+        if seed_num is not None:
+            args.seed_num = seed_num
+        if tune is not None:
+            args.tune = tune
+        if n_trials is not None:
+            args.n_trials = n_trials
         if save_path is not None:
             args.save_path = save_path
             os.makedirs(save_path, exist_ok=True)
         if tune_metric is not None:
             args.tune_metric = tune_metric
+        args.seed = getattr(args, "seed", 0)
+        args.seed_num = getattr(args, "seed_num", 1)
+        args.tune = getattr(args, "tune", False)
+        args.n_trials = getattr(args, "n_trials", 50)
+        args.tune_metric = getattr(args, "tune_metric", None)
+
+    from TALENT.model.lib.tuning_metric import (
+        validate_tune_metric, assert_tune_metric_supported,
+    )
+    validate_tune_metric(args.tune_metric)
+
+    if args.tune and not spec.supports_hpo:
+        raise ValueError(
+            f"Method {model_type!r} does not support HPO. "
+            f"Set tune=False or pick a tunable method."
+        )
 
     # Lazy imports — we don't want to drag torch in just for `list_methods()`.
     import torch
@@ -478,7 +497,7 @@ def run(
     method_cls = spec.get_class()
 
     # Optional HPO. The current `tune_hyper_parameters` mutates args.config.
-    if tune and spec.supports_hpo:
+    if args.tune and spec.supports_hpo:
         assert_tune_metric_supported(model_type, args)
         # Load opt_space — required by tune_hyper_parameters
         _, opt_space = _try_load_method_config(model_type)
@@ -503,8 +522,9 @@ def run(
     predict_times: List[float] = []
     method = None
 
-    for s in range(seed_num):
-        args.seed = s if seed_num > 1 else seed
+    initial_seed = args.seed
+    for s in range(args.seed_num):
+        args.seed = s if args.seed_num > 1 else initial_seed
         set_seeds(args.seed)
         if verbose:
             print(f"[TALENT.api.run] seed={args.seed} method={model_type}")
@@ -562,7 +582,7 @@ def run(
         last_threshold = eval_result["threshold"]
 
     # Aggregate
-    if seed_num > 1:
+    if args.seed_num > 1:
         loss_mean, loss_std, m_mean, m_std = _aggregate_metrics(per_seed, last_metric_names)
     else:
         loss_mean = per_seed[0]["loss"]
