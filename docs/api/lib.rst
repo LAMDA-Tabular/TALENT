@@ -46,6 +46,7 @@ Available Components
 - :doc:`Periodic Tabular DL <lib/periodic_tab_dl>`: Periodic embeddings for tabular data
 - :doc:`TROMPT <lib/trompt>`: Tabular prompting mechanisms
 - :doc:`PTARL <lib/ptarl>`: Policy gradient methods for tabular RL
+- :doc:`TRC <lib/trc>`: Post-hoc representation re-estimation and light-space mapping
 - :doc:`AmFormer <lib/amformer>`: Attention mechanisms for transformers
 - :doc:`TabPTM <lib/tabptm>`: Pre-trained models for tabular data
 - :doc:`DNNR <lib/dnnr>`: Deep nearest neighbor regression
@@ -72,6 +73,7 @@ Available Components
    lib/periodic_tab_dl
    lib/trompt
    lib/ptarl
+   lib/trc
    lib/amformer
    lib/tabptm
    lib/dnnr

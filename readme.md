@@ -80,6 +80,7 @@ Welcome to **TALENT**, a benchmark with a comprehensive machine learning toolbox
 
 ## 📰 What's New
 
+- [2026-08]🌟 Add **[TRC](https://arxiv.org/abs/2603.16569)** (TPAMI 2026), a post-hoc representation corrector that trains and freezes an FT-Transformer backbone before learning representation re-estimation and light-space mapping.
 - [2026-07]🌟 Add **[TabFM](https://github.com/google-research/tabfm)** (Google Research, zero-shot tabular foundation model) as an optional method via `pip install -U "tabfm[pytorch]"`.
 - [2026-06]🌟 Add **[TabPFN v2.5](https://arxiv.org/abs/2511.08667)** (PriorLabs, Nov 2025) and **[TabDPT](https://github.com/layer6ai-labs/TabDPT-inference)** (Layer 6 AI, ICL + retrieval). TALENT now ships the full TabPFN family (v1, v2, v2.5, v3) plus TabDPT alongside the other tabular foundation models.
 - [2026-06]🌟 Evaluation improvements: **calibration metrics** (Brier, ECE) are now reported by default for every classifier, **decision thresholds** are tuned on the validation set for binary classification (used for Accuracy/F1/Precision/Recall; threshold-independent metrics like AUC/LogLoss/Brier/ECE are unaffected), and `RunResult` exposes a uniform `predict_proba`/`predict_labels` interface regardless of whether the underlying method natively returns logits or probabilities. Bundled checkpoints are now resolved via `importlib.resources` so methods work from any working directory.
@@ -161,6 +162,7 @@ TALENT integrates an extensive array of 30+ deep learning architectures for tabu
 43. **[TabPFN v2.5](https://arxiv.org/abs/2511.08667)**: TabPFN v2.5 (PriorLabs, Nov 2025), the intermediate release between v2 and v3. Scales in-context learning to ~50k rows × 2k features. Requires `pip install -U 'tabpfn>=8.0.0'`.
 44. **[TabDPT](https://github.com/layer6ai-labs/TabDPT-inference)**: A tabular foundation model from Layer 6 AI that combines in-context learning with retrieval and self-supervised pre-training on real data, removing fixed context-size limits. Requires `pip install -U tabdpt`.
 45. **[TabFM](https://github.com/google-research/tabfm)**: Google's zero-shot tabular foundation model for classification and regression, using in-context learning over training rows as context. Requires `pip install -U "tabfm[pytorch]"`; the upstream model weights use the TabFM Non-Commercial License.
+46. **[TRC](https://arxiv.org/abs/2603.16569)**: A post-hoc Tabular Representation Corrector that freezes a trained backbone, learns to remove representation shift, and maps corrected representations into a compact light-embedding space.
 
 
 🔧 If you want to check the **default hyperparameters and hyperparameter search spaces** of all methods, please visit:  
@@ -219,6 +221,19 @@ if __name__ == '__main__':
 ```bash
 python train_model_deep.py --model_type MODEL_NAME
 ```
+
+For TRC, use integer-encoded categorical features as required by its
+FT-Transformer backbone:
+
+```bash
+python train_model_deep.py --model_type trc --cat_policy indices
+```
+
+TRC first trains the backbone for at most `--max_epoch` epochs, freezes it,
+and then trains the representation corrector for at most the same number of
+epochs. Ablations and paper hyperparameters are available in
+`TALENT/configs/default/trc.json`; set `shift_estimator`, `space_mapping`, or
+`loss_orth` to `false` to disable the corresponding component.
 
 ### 🐍 Python API (library mode)
 

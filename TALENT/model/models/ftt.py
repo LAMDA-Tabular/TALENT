@@ -289,9 +289,13 @@ class Transformer(nn.Module):
             x = layer[f'norm{norm_idx}'](x)
         return x
 
-    def forward(self, x_num: Tensor, x_cat: ty.Optional[Tensor]) -> Tensor:
-        
+    def encode(self, x_num: Tensor, x_cat: ty.Optional[Tensor]) -> Tensor:
+        """Return the representation immediately before the prediction head.
 
+        Keeping representation extraction separate from ``forward`` lets
+        post-hoc methods such as TRC reuse a trained FT-Transformer without
+        changing its prediction behaviour.
+        """
         x = self.tokenizer(x_num, x_cat)
 
         for layer_idx, layer in enumerate(self.layers):
@@ -322,6 +326,10 @@ class Transformer(nn.Module):
         if self.last_normalization is not None:
             x = self.last_normalization(x)
         x = self.last_activation(x)
+        return x
+
+    def forward(self, x_num: Tensor, x_cat: ty.Optional[Tensor]) -> Tensor:
+        x = self.encode(x_num, x_cat)
         x = self.head(x)
         x = x.squeeze(-1)
         return x

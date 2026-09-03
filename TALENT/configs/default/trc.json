@@ -1,0 +1,40 @@
+{
+    "trc": {
+        "model": {
+            "embedding_num": 10,
+            "shift_estimator": true,
+            "space_mapping": true,
+            "loss_orth": true,
+            "reg_weight": 0.1,
+            "tau": 0.01,
+            "optimal_loss_fraction": 0.2,
+            "perturb_times": 3,
+            "mask_keep_min": 0.1,
+            "mask_keep_max": 0.3,
+            "backbone": {
+                "token_bias": true,
+                "n_layers": 3,
+                "d_token": 192,
+                "n_heads": 8,
+                "d_ffn_factor": 1.3333333333333333,
+                "attention_dropout": 0.2,
+                "ffn_dropout": 0.1,
+                "residual_dropout": 0.0,
+                "activation": "reglu",
+                "prenormalization": false,
+                "initialization": "kaiming",
+                "kv_compression": null,
+                "kv_compression_sharing": null
+            }
+        },
+        "training": {
+            "lr": 0.0001,
+            "weight_decay": 0.00001,
+            "backbone_lr": 0.0001,
+            "backbone_weight_decay": 0.00001,
+            "backbone_patience": 10,
+            "trc_patience": 10
+        },
+        "general": {}
+    }
+}

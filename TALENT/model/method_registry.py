@@ -255,6 +255,10 @@ _METHODS_DEEP = [
           _DEEP, _GPU, _LOGITS, cat_policy=_ALL_CAT_POLICIES),
     _spec("ptarl", "TALENT.model.methods.ptarl", "PTARLMethod",
           _DEEP, _GPU, _LOGITS, cat_policy=("indices",)),
+    _spec("trc", "TALENT.model.methods.trc", "TRCMethod",
+          _DEEP, _GPU, _LOGITS, cat_policy=("indices",),
+          notes="Deep Tabular Representation Corrector with a frozen "
+                "FT-Transformer backbone and two-stage training."),
     _spec("bishop", "TALENT.model.methods.bishop", "BiSHopMethod",
           _DEEP, _GPU, _LOGITS, cat_policy=("indices",)),
     _spec("protogate", "TALENT.model.methods.protogate", "ProtoGateMethod",
