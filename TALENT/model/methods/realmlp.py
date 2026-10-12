@@ -150,11 +150,16 @@ class RealMLPMethod(Method):
         test_logit = torch.from_numpy(test_logit)
         test_label = torch.from_numpy(test_label)
             
-        vl = self.criterion(test_logit, test_label).item()
+        if self.is_regression:
+            vl = self.criterion(test_logit, test_label).item()
+        else:
+            # predict() returns probabilities, so the loss is their NLL.
+            from TALENT.model.utils import probability_nll
+            vl = probability_nll(test_logit, test_label)
 
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
 
-        # FIX: Denormalize regression predictions
+        # Denormalize regression predictions back to original scale
         if self.is_regression and self.y_info.get('policy') == 'mean_std':
             test_logit = test_logit * self.y_info['std'] + self.y_info['mean']
 

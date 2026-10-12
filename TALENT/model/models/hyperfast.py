@@ -22,6 +22,20 @@ from TALENT.model.lib.hyperfast.model import HyperFast
 
 # Source: https://github.com/AI-sandbox/HyperFast/blob/main/hyperfast/hyperfast.py
 
+DEFAULT_CONFIG = {
+    "hn_n_layers": 4,
+    "hn_hidden_size": 1024,
+    "clip_data_value": 27.6041,
+    "rf_size": 2**15,
+    "n_dims": 784,
+    "main_n_layers": 3,
+    "max_categories": 46,
+    "lr": 0.0001,
+    "model_url": "https://figshare.com/ndownloader/files/43484094",
+    "model_path": "model/models/hyperfast/hyperfast.ckpt",
+}
+
+
 class HyperFastClassifier(BaseEstimator):
     """
     A scikit-learn-like interface for the HyperFast model.
@@ -47,19 +61,9 @@ class HyperFastClassifier(BaseEstimator):
         optimization="None", # "None" or "ensemble_optimize"
         optimize_steps=64,
         torch_pca=True,
-        config={
-            "hn_n_layers": 4,
-            "hn_hidden_size": 1024,
-            "clip_data_value": 27.6041,
-            "rf_size": 2**15,
-            "n_dims": 784,
-            "main_n_layers": 3,
-            "max_categories": 46,
-            "lr": 0.0001,
-            "model_url": "https://figshare.com/ndownloader/files/43484094",
-            "model_path": "model/models/hyperfast/hyperfast.ckpt",
-        }
+        config=None,
     ):
+        config = dict(DEFAULT_CONFIG) if config is None else config
         self.device = device
         self.n_ensemble = n_ensemble
         self.batch_size = batch_size
@@ -103,6 +107,7 @@ class HyperFastClassifier(BaseEstimator):
         )
         response = requests.get(url)
         if response.status_code == 200:
+            os.makedirs(os.path.dirname(local_path) or ".", exist_ok=True)
             with open(local_path, "wb") as f:
                 f.write(response.content)
             print(f"Model downloaded and saved to {local_path}")

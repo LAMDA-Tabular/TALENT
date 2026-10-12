@@ -9,6 +9,8 @@ from TALENT.model.lib.data import (
     data_enc_process,
     data_label_process
 )
+from TALENT.model.method_registry import weights_download_hint
+from TALENT.model.utils import probability_nll
 import time
 
 
@@ -43,6 +45,7 @@ class TabPFNMethod(Method):
     def construct_model(self, model_config = None,cat_indices=None):
         cat_indices = cat_indices or []
         from TALENT.model.method_registry import resolve_bundled_path
+        from TALENT.model.methods.foundation_base import resolve_n_estimators
         if self.is_regression:
             from TALENT.model.models.tabpfn_v2 import TabPFNRegressor
             # Use bundled checkpoint if present; otherwise fall back to the
@@ -54,7 +57,7 @@ class TabPFNMethod(Method):
                 model_path = model_path,
                 device = self.args.device,
                 random_state = self.args.seed,
-                n_estimators = 8,
+                n_estimators = resolve_n_estimators(self.args, 8),
                 ignore_pretraining_limits = True,
                 categorical_features_indices = cat_indices
             )
@@ -67,7 +70,7 @@ class TabPFNMethod(Method):
                 model_path = model_path,
                 device = self.args.device,
                 random_state = self.args.seed,
-                n_estimators = 4,
+                n_estimators = resolve_n_estimators(self.args, 4),
                 ignore_pretraining_limits = True,
                 categorical_features_indices = cat_indices
             )
@@ -99,9 +102,12 @@ class TabPFNMethod(Method):
             sample_size = sampled_X.shape[0]
         self.sampled_X = sampled_X
         self.sampled_Y = sampled_Y
-        self.construct_model(cat_indices=cat_indices)
-        self.model.fit(sampled_X,sampled_Y,sample_size)
-        self.fit_time = 0  # general model does not require fitting
+        # The checkpoint is loaded (or downloaded) when the model is fitted.
+        with weights_download_hint(getattr(self.args, 'model_type', 'tabpfn_v2')):
+            self.construct_model(cat_indices=cat_indices)
+            tic = time.time()
+            self.model.fit(sampled_X,sampled_Y,sample_size)
+            self.fit_time = time.time() - tic
 
 
     # Test rows are scored independently (the in-context set is the training
@@ -137,7 +143,11 @@ class TabPFNMethod(Method):
         self.predict_time = time.time() - tic
         
         test_label = self.y_test
-        vl = self.criterion(torch.tensor(test_logit), torch.tensor(test_label)).item()
+        if self.is_regression:
+            vl = self.criterion(torch.tensor(test_logit), torch.tensor(test_label)).item()
+        else:
+            # predict_proba returns probabilities, so the loss is their NLL.
+            vl = probability_nll(test_logit, test_label)
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
         
         # Denormalize regression predictions back to original scale

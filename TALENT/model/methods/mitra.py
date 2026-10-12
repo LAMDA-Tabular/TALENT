@@ -9,10 +9,16 @@ from TALENT.model.lib.data import (
     data_enc_process,
     data_label_process
 )
+from TALENT.model.method_registry import weights_download_hint
 import time
 
 
 class MitraMethod(Method):
+    # Checkpoint locations: bundled under TALENT/model/models/<BUNDLED_DIR>/{cls,reg}/,
+    # otherwise downloaded from these Hugging Face repos.
+    BUNDLED_DIR = "models_mitra"
+    HF_REPOS = {"cls": "autogluon/mitra-classifier", "reg": "autogluon/mitra-regressor"}
+
     def __init__(self, args, is_regression):
         super().__init__(args, is_regression)
         assert args.normalization == 'none'
@@ -42,15 +48,20 @@ class MitraMethod(Method):
 
 
     def construct_model(self, model_config = None):
+        import os
         from TALENT.model.models.mitra import Mitra
-        from TALENT.model.method_registry import resolve_bundled_path
+        from TALENT.model.method_registry import resolve_bundled_path, download_from_hf_hub
         subdir = "reg" if self.is_regression else "cls"
         # Resolve via importlib.resources so the package works from any CWD.
-        model_path = resolve_bundled_path(f"model/models/models_mitra/{subdir}/")
+        model_path = resolve_bundled_path(f"model/models/{self.BUNDLED_DIR}/{subdir}/")
         if model_path is None:
             # Fall back to the legacy relative path -- preserves prior
             # behaviour when running from the repository root.
-            model_path = f"./TALENT/model/models/models_mitra/{subdir}/"
+            model_path = f"./TALENT/model/models/{self.BUNDLED_DIR}/{subdir}/"
+        if not os.path.exists(os.path.join(model_path, "config.json")):
+            # Checkpoint not bundled: fetch the official weights (same
+            # config.json + model.safetensors layout) from the Hugging Face Hub.
+            model_path = download_from_hf_hub(self.HF_REPOS[subdir])
         self.model = Mitra.from_pretrained(
             path=model_path,
             device="cpu"  # safe tensor initialization on CPU
@@ -83,8 +94,45 @@ class MitraMethod(Method):
         self.x_support = torch.from_numpy(x_support).to(self.args.device)  # [n_support, n_feat]
         self.y_support = torch.from_numpy(y_support).to(self.args.device)  # [n_support]
 
-        self.construct_model()
-        self.fit_time = 0  # general model does not require fitting
+        with weights_download_hint(getattr(self.args, 'model_type', 'mitra')):
+            self.construct_model()
+        if not self.is_regression and self.n_classes > self.model.dim_output:
+            raise ValueError(
+                f"Mitra supports classification with at most {self.model.dim_output} "
+                f"classes; got {self.n_classes}."
+            )
+        self._bins = None
+        if self.is_regression and self.model.dim_output > 1:
+            self.y_support = self._encode_regression_bins(self.y_support)
+        self.fit_time = 0  # in-context model: all work happens in predict()
+
+
+    def _encode_regression_bins(self, y):
+        """Targets -> bin ids for a distributional regression head (Mitra-v2).
+
+        Mirrors AutoGluon's cross-entropy regression path: targets are min-max
+        scaled over the support set and bucketized into ``dim_output`` bins on
+        ``linspace(-0.5, 1.5, dim_output + 1)``.
+        """
+        y_min, y_max = y.min(), y.max()
+        if not bool(y_max > y_min):
+            raise ValueError("Mitra's binned regression head needs at least two distinct target values.")
+        n_bins = self.model.dim_output
+        self._bins = torch.linspace(-0.5, 1.5, n_bins + 1, device=y.device)
+        self._y_range = (float(y_min), float(y_max))
+        y_norm = (y - y_min) / (y_max - y_min)
+        return (torch.bucketize(y_norm, self._bins) - 1).clamp(0, n_bins - 1).long()
+
+
+    def _decode_regression_bins(self, logits):
+        """Bin logits -> point predictions: softmax-weighted mean of the bin
+        centres (the decode used for the released Mitra-v2 regressor), then the
+        min-max scaling is undone."""
+        bins = self._bins.cpu()
+        centers = bins[:-1] + (bins[1] - bins[0]) / 2
+        y = (torch.softmax(logits.float(), dim=-1) * centers).sum(dim=-1)
+        y_min, y_max = self._y_range
+        return y * (y_max - y_min) + y_min
 
 
     def predict(self, data, info, model_name):
@@ -149,6 +197,8 @@ class MitraMethod(Method):
         test_logit = torch.cat(results, dim=0).cpu()
         if not self.is_regression:
             test_logit = test_logit[:, :self.n_classes]
+        elif self._bins is not None:
+            test_logit = self._decode_regression_bins(test_logit)
         test_label = self.y_test
 
         test_label_tensor = torch.tensor(test_label, dtype=torch.float32 if self.is_regression else torch.long)
@@ -156,7 +206,7 @@ class MitraMethod(Method):
         vl = self.criterion(test_logit, test_label_tensor).item()
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
         
-        # FIX: Denormalize regression predictions
+        # Denormalize regression predictions back to original scale
         if self.is_regression and self.y_info.get('policy') == 'mean_std':
             test_logit = test_logit * self.y_info['std'] + self.y_info['mean']
 

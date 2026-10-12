@@ -1,61 +1,26 @@
-from TALENT.model.methods.base import Method
-import torch
-import numpy as np
-import torch.nn.functional as F
-
-from TALENT.model.lib.data import (
-    Dataset,
-    data_nan_process,
-    data_enc_process,
-    data_label_process,
-)
-import time
+from TALENT.model.methods.foundation_base import SklearnFoundationMethod
 
 
-class TabPFNv3Method(Method):
+class TabPFNv3Method(SklearnFoundationMethod):
     """TabPFN v3 method.
 
-    Uses the official `tabpfn>=8.0.0` package which ships TabPFN-3 as the default model.
-    Falls back gracefully if the user has only an older `tabpfn` version installed.
+    Uses the official `tabpfn>=8.0.0` package. The model version is pinned via
+    ``ModelVersion.V3`` because the package's *default* model moves forward
+    (``tabpfn`` 9.0 switched it from TabPFN-3 to TabPFN-3.5), so an unpinned
+    constructor would silently run a different model.
 
     Setup:
         pip install -U tabpfn>=8.0.0
     """
 
-    def __init__(self, args, is_regression):
-        super().__init__(args, is_regression)
-        assert args.normalization == 'none'
-        assert args.cat_policy == 'indices'
-        assert args.num_policy == 'none'
-        assert args.tune is not True
-
-    def data_format(self, is_train=True, N=None, C=None, y=None):
-        if is_train:
-            self.N, self.C, self.num_new_value, self.imputer, self.cat_new_value = data_nan_process(
-                self.N, self.C, self.args.num_nan_policy, self.args.cat_nan_policy
-            )
-            self.y, self.y_info, self.label_encoder = data_label_process(self.y, self.is_regression)
-            self.N, self.C, self.ord_encoder, self.mode_values, self.cat_encoder = data_enc_process(
-                self.N, self.C, self.args.cat_policy
-            )
-            self.criterion = F.cross_entropy if not self.is_regression else F.mse_loss
-        else:
-            N_test, C_test, _, _, _ = data_nan_process(
-                N, C, self.args.num_nan_policy, self.args.cat_nan_policy,
-                self.num_new_value, self.imputer, self.cat_new_value
-            )
-            N_test, C_test, _, _, _ = data_enc_process(
-                N_test, C_test, self.args.cat_policy, None,
-                self.ord_encoder, self.mode_values, self.cat_encoder
-            )
-            y_test, _, _ = data_label_process(y, self.is_regression, self.y_info, self.label_encoder)
-            if N_test is not None and C_test is not None:
-                self.N_test, self.C_test = N_test['test'], C_test['test']
-            elif N_test is None and C_test is not None:
-                self.N_test, self.C_test = None, C_test['test']
-            else:
-                self.N_test, self.C_test = N_test['test'], None
-            self.y_test = y_test['test']
+    # ``tabpfn.constants.ModelVersion`` member to pin, and how to describe it.
+    MODEL_VERSION = "V3"
+    MODEL_NAME = "TabPFN v3"
+    PACKAGE_REQUIREMENT = "tabpfn>=8.0.0"
+    # TabPFN-3 is the package default in tabpfn 8.x, so if the version cannot
+    # be pinned (older 8.x without ``create_default_for_version``) the default
+    # constructor still loads the right model.
+    ALLOW_UNPINNED_FALLBACK = True
 
     def _build_kwargs(self, cat_indices):
         general = self.args.config.get('general', {}) or {}
@@ -66,7 +31,7 @@ class TabPFNv3Method(Method):
             categorical_features_indices=cat_indices,
         )
         # Optional knobs forwarded if present in config — keeps the wrapper tolerant
-        # to minor signature changes between v8.x releases.
+        # to minor signature changes between tabpfn releases.
         for k in ('n_estimators', 'softmax_temperature', 'memory_saving_mode',
                   'fit_mode', 'inference_precision', 'model_path'):
             if k in general:
@@ -79,8 +44,8 @@ class TabPFNv3Method(Method):
             from tabpfn import TabPFNClassifier, TabPFNRegressor
         except ImportError as e:
             raise ImportError(
-                "TabPFN v3 requires the `tabpfn` package (>=8.0.0). "
-                "Install it via: pip install -U 'tabpfn>=8.0.0'."
+                f"{self.MODEL_NAME} requires the `{self.PACKAGE_REQUIREMENT}` package. "
+                f"Install it via: pip install -U '{self.PACKAGE_REQUIREMENT}'."
             ) from e
 
         # Default ensemble sizes mirror upstream defaults; users can override via config['general'].
@@ -89,74 +54,21 @@ class TabPFNv3Method(Method):
         kwargs = self._build_kwargs(cat_indices)
         kwargs.setdefault('n_estimators', general.get('n_estimators', n_est_default))
 
-        if self.is_regression:
-            self.model = TabPFNRegressor(**kwargs)
+        model_cls = TabPFNRegressor if self.is_regression else TabPFNClassifier
+        try:
+            from tabpfn.constants import ModelVersion
+            version = getattr(ModelVersion, self.MODEL_VERSION, None)
+        except ImportError:
+            version = None
+        if version is not None and hasattr(model_cls, 'create_default_for_version'):
+            # kwargs are applied as overrides, so a configured `model_path`
+            # or `n_estimators` still takes precedence.
+            self.model = model_cls.create_default_for_version(version, **kwargs)
+        elif self.ALLOW_UNPINNED_FALLBACK:
+            self.model = model_cls(**kwargs)
         else:
-            self.model = TabPFNClassifier(**kwargs)
-
-    def fit(self, data, info, train=True, config=None):
-        N, C, y = data
-        self.D = Dataset(N, C, y, info)
-        self.N, self.C, self.y = self.D.N, self.D.C, self.D.y
-        self.is_binclass, self.is_multiclass, self.is_regression = (
-            self.D.is_binclass, self.D.is_multiclass, self.D.is_regression
-        )
-        self.data_format(is_train=True)
-
-        sampled_Y = self.y['train']
-        cat_indices = []
-        if self.N is not None and self.C is not None:
-            sampled_X = np.concatenate((self.N['train'], self.C['train']), axis=1)
-            n_num = self.N['train'].shape[1]
-            cat_indices = list(range(n_num, n_num + self.C['train'].shape[1]))
-        elif self.N is None and self.C is not None:
-            sampled_X = self.C['train']
-            cat_indices = list(range(self.C['train'].shape[1]))
-        else:
-            sampled_X = self.N['train']
-
-        # Row cap: config['general']['sample_size'] override, else the
-        # registry's train_row_limit (~1M native context for v3).
-        sampled_X, sampled_Y = self.subsample_train_rows(sampled_X, sampled_Y)
-
-        self.sampled_X = sampled_X
-        self.sampled_Y = sampled_Y
-        self.construct_model(cat_indices=cat_indices)
-
-        tic = time.time()
-        self.model.fit(sampled_X, sampled_Y)
-        self.fit_time = time.time() - tic
-
-    def predict(self, data, info, model_name):
-        N, C, y = data
-        self.data_format(False, N, C, y)
-        if self.N_test is not None and self.C_test is not None:
-            Test_X = np.concatenate((self.N_test, self.C_test), axis=1)
-        elif self.N_test is None and self.C_test is not None:
-            Test_X = self.C_test
-        else:
-            Test_X = self.N_test
-
-        tic = time.time()
-        if self.is_regression:
-            test_logit = self.model.predict(Test_X)
-        else:
-            test_logit = self.model.predict_proba(Test_X)
-        self.predict_time = time.time() - tic
-
-        test_label = self.y_test
-        if self.is_regression:
-            t_pred = torch.tensor(test_logit, dtype=torch.float32).reshape(-1)
-            t_lab = torch.tensor(test_label, dtype=torch.float32).reshape(-1)
-            vl = self.criterion(t_pred, t_lab).item()
-        else:
-            vl = self.criterion(torch.tensor(test_logit), torch.tensor(test_label)).item()
-        vres, metric_name = self.metric(test_logit, test_label, self.y_info)
-
-        # Denormalize regression predictions for the returned value
-        if self.is_regression and self.y_info.get('policy') == 'mean_std':
-            test_logit = test_logit * self.y_info['std'] + self.y_info['mean']
-        print('Test: loss={:.4f}'.format(vl))
-        for name, res in zip(metric_name, vres):
-            print('[{}]={:.4f}'.format(name, res))
-        return vl, vres, metric_name, test_logit
+            raise ImportError(
+                f"{self.MODEL_NAME} is not available in the installed `tabpfn` package "
+                f"(ModelVersion.{self.MODEL_VERSION} not found). "
+                f"Install it via: pip install -U '{self.PACKAGE_REQUIREMENT}'."
+            )

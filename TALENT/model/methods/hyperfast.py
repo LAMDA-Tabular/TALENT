@@ -9,6 +9,7 @@ from TALENT.model.lib.data import (
     data_enc_process,
     data_label_process
 )
+from TALENT.model.utils import probability_nll
 import time
 
 class HyperFastMethod(Method):
@@ -39,17 +40,43 @@ class HyperFastMethod(Method):
                 self.N_test,self.C_test = N_test['test'],None
             self.y_test = y_test['test']
 
+    @staticmethod
+    def checkpoint_path():
+        """Where the HyperFast checkpoint is read from (and downloaded to).
+
+        Bundled copy if present, else a copy left at the historical
+        CWD-relative location by an earlier run, else the TALENT cache
+        directory (``$TALENT_CACHE_DIR``, default ``~/.cache/talent``).
+        """
+        import os
+        from TALENT.model.method_registry import resolve_bundled_path, talent_cache_dir
+        legacy = os.path.join("model", "models", "hyperfast", "hyperfast.ckpt")
+        bundled = resolve_bundled_path("model/models/hyperfast/hyperfast.ckpt")
+        if bundled is not None:
+            return bundled
+        if os.path.exists(legacy):
+            return legacy
+        return os.path.join(talent_cache_dir(), "hyperfast", "hyperfast.ckpt")
+
     def construct_model(self, model_config = None):
-        from TALENT.model.models.hyperfast import HyperFastClassifier
-        self.model = HyperFastClassifier(device = self.args.device, seed = self.args.seed)  
+        from TALENT.model.models.hyperfast import HyperFastClassifier, DEFAULT_CONFIG
+        from TALENT.model.methods.foundation_base import resolve_n_estimators
+        config = dict(DEFAULT_CONFIG, model_path=self.checkpoint_path())
+        # The checkpoint is downloaded from figshare on first use.
+        self.model = HyperFastClassifier(
+            device = self.args.device, seed = self.args.seed,
+            n_ensemble = resolve_n_estimators(self.args, 1), config = config,
+        )
 
     def fit(self, data, info, train = True, config = None):
+        from TALENT.model.method_registry import weights_download_hint
         N, C, y = data
         self.D = Dataset(N, C, y, info)
         self.N, self.C, self.y = self.D.N, self.D.C, self.D.y
         self.is_binclass, self.is_multiclass, self.is_regression = self.D.is_binclass, self.D.is_multiclass, self.D.is_regression
         self.data_format(is_train = True)
-        self.construct_model()
+        with weights_download_hint(getattr(self.args, 'model_type', 'hyperfast')):
+            self.construct_model()
 
         sampled_Y = self.y['train']
         if self.N is not None and self.C is not None:
@@ -62,8 +89,11 @@ class HyperFastMethod(Method):
         else:
             sampled_X = self.N['train']
             cat_features = []
+        # Optional row cap via config['general']['sample_size'].
+        sampled_X, sampled_Y = self.subsample_train_rows(sampled_X, sampled_Y)
+        tic = time.time()
         self.model.fit(sampled_X, sampled_Y, cat_features)
-        self.fit_time = 0  # general model does not require fitting
+        self.fit_time = time.time() - tic
     
     def predict(self, data, info, model_name):
         N, C, y = data
@@ -80,7 +110,8 @@ class HyperFastMethod(Method):
         self.predict_time = time.time() - tic
         
         test_label = self.y_test
-        vl = self.criterion(torch.tensor(test_logit, dtype=torch.double),torch.tensor(test_label, dtype=torch.long)).item()
+        # predict_proba returns probabilities, so the loss is their NLL.
+        vl = probability_nll(test_logit, test_label)
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
         print('Test: loss={:.4f}'.format(vl))
         for name, res in zip(metric_name, vres):

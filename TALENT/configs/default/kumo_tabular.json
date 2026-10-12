@@ -1,0 +1,11 @@
+{
+    "kumo_tabular": {
+        "model": {},
+        "training": {},
+        "general": {
+            "size": "large",
+            "n_estimators": 16,
+            "low_cardinality": "infer"
+        }
+    }
+}

@@ -9,10 +9,22 @@ from TALENT.model.lib.data import (
     data_enc_process,
     data_label_process
 )
+from TALENT.model.method_registry import weights_download_hint
+from TALENT.model.utils import probability_nll
 import time
 
 
 class LimiXMethod(Method):
+    """LimiX-16M (bundled copy of the LimiX v1 inference code).
+
+    The checkpoint is used from ``TALENT/model/models/models_limix/`` when
+    bundled, and otherwise downloaded automatically from the Hugging Face Hub.
+    """
+
+    # Checkpoint: bundled file name under models_limix/, and its Hugging Face source.
+    CHECKPOINT = "LimiX-16M.ckpt"
+    HF_REPO = "stable-ai/LimiX-16M"
+
     def __init__(self, args, is_regression):
         super().__init__(args, is_regression)
         assert args.normalization == 'none'
@@ -41,29 +53,42 @@ class LimiXMethod(Method):
             self.y_test = y_test['test']
 
 
+    def checkpoint_path(self):
+        """Bundled checkpoint if present, otherwise download it from the Hub."""
+        import os
+        from TALENT.model.method_registry import resolve_bundled_path, download_from_hf_hub
+        # Resolve the bundled checkpoint via importlib.resources so the package
+        # works from any CWD; fall back to the legacy relative path so
+        # behaviour from the repo root is preserved.
+        model_path = (
+            resolve_bundled_path(f"model/models/models_limix/{self.CHECKPOINT}")
+            or f"./TALENT/model/models/models_limix/{self.CHECKPOINT}"
+        )
+        if not os.path.exists(model_path):
+            model_path = download_from_hf_hub(self.HF_REPO, self.CHECKPOINT)
+        return model_path
+
+
     def construct_model(self, model_config = None):
         from TALENT.model.models.limix import LimiXPredictor
         from TALENT.model.method_registry import resolve_bundled_path
         cfg_name = ("reg" if self.is_regression else "cls") + "_default_noretrieval.json"
-        # Resolve bundled checkpoint + inference config via importlib.resources
-        # so the package works from any CWD; fall back to legacy relative path
-        # so behaviour from the repo root is preserved.
-        model_path = (
-            resolve_bundled_path("model/models/models_limix/LimiX-16M.ckpt")
-            or "./TALENT/model/models/models_limix/LimiX-16M.ckpt"
-        )
         config_path = (
             resolve_bundled_path(f"model/lib/limix/config/{cfg_name}")
             or f"./TALENT/model/lib/limix/config/{cfg_name}"
         )
         self.model = LimiXPredictor(
             device = self.args.device,
-            model_path = model_path,
+            model_path = self.checkpoint_path(),
             inference_config = config_path,
             task_type = "Regression" if self.is_regression else "Classification",
             mask_prediction = False,
             seed = self.args.seed
         )
+
+
+    def _predict_raw(self, x_query):
+        return self.model.predict(self.x_support, self.y_support, x_query)
 
 
     def fit(self, data, info, train = True, config = None):
@@ -72,46 +97,57 @@ class LimiXMethod(Method):
         self.N, self.C, self.y = self.D.N, self.D.C, self.D.y
         self.is_binclass, self.is_multiclass, self.is_regression = self.D.is_binclass, self.D.is_multiclass, self.D.is_regression
         self.data_format(is_train = True)
-        
+
         y_support = self.y['train']
+        self.cat_indices = []
         if self.N is not None and self.C is not None:
             x_support = np.concatenate((self.N['train'], self.C['train']), axis=1)
+            n_num = self.N['train'].shape[1]
+            self.cat_indices = list(range(n_num, n_num + self.C['train'].shape[1]))
         elif self.N is None and self.C is not None:
             x_support = self.C['train']
+            self.cat_indices = list(range(self.C['train'].shape[1]))
         else:
             x_support = self.N['train']
-        
+
+        # Optional row cap via config['general']['sample_size'] (no registry
+        # limit for LimiX, so this is a no-op unless the user sets one).
+        x_support, y_support = self.subsample_train_rows(x_support, y_support)
+
         self.x_support = x_support.astype(np.float32)
         self.y_support = y_support.astype(np.float32 if self.is_regression else np.int64)
-        self.construct_model()
-        self.fit_time = 0  # general model does not require fitting
+        with weights_download_hint(getattr(self.args, 'model_type', 'limix')):
+            self.construct_model()
+        self.fit_time = 0  # in-context model: all work happens in predict()
 
 
     def predict(self, data, info, model_name):
         N, C, y = data
         self.data_format(False, N, C, y)
-        
+
         if self.N_test is not None and self.C_test is not None:
             x_query = np.concatenate((self.N_test, self.C_test), axis=1)
         elif self.N_test is None and self.C_test is not None:
             x_query = self.C_test
         else:
             x_query = self.N_test
-        
+
         tic = time.time()
-        test_logit = self.model.predict(self.x_support, self.y_support, x_query)
+        test_logit = self._predict_raw(x_query)
         self.predict_time = time.time() - tic
         test_label = self.y_test
 
         test_logit_tensor = torch.tensor(test_logit, dtype=torch.float32, device=torch.device("cpu"))
         test_label_tensor = torch.tensor(test_label, dtype=torch.float32 if self.is_regression else torch.long)
 
-        vl = self.criterion(test_logit_tensor, test_label_tensor).item()
+        if self.is_regression:
+            vl = self.criterion(test_logit_tensor, test_label_tensor).item()
+        else:
+            # LimiX returns class probabilities, so the loss is their NLL.
+            vl = probability_nll(test_logit_tensor, test_label_tensor)
         vres, metric_name = self.metric(test_logit_tensor, test_label_tensor, self.y_info)
 
-        # ==========================================================
-        # FIX: Denormalize regression predictions back to original scale
-        # ==========================================================
+        # Denormalize regression predictions back to original scale
         if self.is_regression and self.y_info.get('policy') == 'mean_std':
             test_logit_tensor = test_logit_tensor * self.y_info['std'] + self.y_info['mean']
 

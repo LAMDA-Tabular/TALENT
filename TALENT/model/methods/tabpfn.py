@@ -9,6 +9,7 @@ from TALENT.model.lib.data import (
     data_enc_process,
     data_label_process
 )
+from TALENT.model.utils import probability_nll
 import time
 
 class TabPFNMethod(Method):
@@ -41,9 +42,12 @@ class TabPFNMethod(Method):
 
     def construct_model(self, model_config = None):
         from TALENT.model.models.tabpfn import TabPFNClassifier
+        from TALENT.model.methods.foundation_base import resolve_n_estimators
+        # The TabPFN v1 checkpoint is bundled with TALENT (models_tabpfn/).
         self.model = TabPFNClassifier(
             device = self.args.device,
-            seed = self.args.seed
+            seed = self.args.seed,
+            N_ensemble_configurations = resolve_n_estimators(self.args, 32),
         )
 
     def fit(self, data, info, train = True, config = None):
@@ -65,8 +69,9 @@ class TabPFNMethod(Method):
         # Row cap: config['general']['sample_size'] override, else the
         # registry's train_row_limit. Stratified to keep class proportions.
         sampled_X, sampled_Y = self.subsample_train_rows(sampled_X, sampled_Y)
+        tic = time.time()
         self.model.fit(sampled_X, sampled_Y, overwrite_warning=True)
-        self.fit_time = 0  # general model does not require fitting
+        self.fit_time = time.time() - tic
     
     def predict(self, data, info, model_name):
         N, C, y = data
@@ -83,7 +88,8 @@ class TabPFNMethod(Method):
         self.predict_time = time.time() - tic
 
         test_label = self.y_test
-        vl = self.criterion(torch.tensor(test_logit),torch.tensor(test_label)).item()
+        # predict_proba returns probabilities, so the loss is their NLL.
+        vl = probability_nll(test_logit, test_label)
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
         print('Test: loss={:.4f}'.format(vl))
         for name, res in zip(metric_name, vres):

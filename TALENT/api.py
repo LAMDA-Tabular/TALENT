@@ -531,8 +531,8 @@ def run(
 
         method = method_cls(args, is_regression)
         fit_ret = method.fit(train_val_data, info)
-        # Some methods return time_cost from fit; some set self.fit_time. We use
-        # self.fit_time when available (set in our bugfix sweep across methods).
+        # Deep methods set self.fit_time; classical methods return the time
+        # cost from fit(). Prefer self.fit_time and fall back to the return.
         fit_time = getattr(method, "fit_time", None)
         if fit_time is None and isinstance(fit_ret, (int, float)):
             fit_time = float(fit_ret)

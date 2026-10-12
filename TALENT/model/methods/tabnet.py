@@ -125,7 +125,12 @@ class TabNetMethod(Method):
         self.predict_time = time.time() - tic
         
         test_label = self.y_test
-        vl = self.criterion(torch.tensor(test_logit), torch.tensor(test_label)).item()
+        if self.is_regression:
+            vl = self.criterion(torch.tensor(test_logit), torch.tensor(test_label)).item()
+        else:
+            # predict_proba returns probabilities, so the loss is their NLL.
+            from TALENT.model.utils import probability_nll
+            vl = probability_nll(test_logit, test_label)
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
 
         # Denormalize regression predictions back to original scale

@@ -30,11 +30,15 @@ If you use **TALENT** in your research, please consider citing the following wor
              year={2024}
     }
 
-    @article{liu2024talenttabularanalyticslearning,
-             title={TALENT: A Tabular Analytics and Learning Toolbox}, 
-             author={Si-Yang Liu and Hao-Run Cai and Qi-Le Zhou and Han-Jia Ye},
-             journal={arXiv preprint arXiv:2407.04057},
-             year={2024}
+    @article{JMLR:v26:25-0512,
+             author  = {Si-Yang Liu and Hao-Run Cai and Qi-Le Zhou and Huai-Hong Yin and Tao Zhou and Jun-Peng Jiang and Han-Jia Ye},
+             title   = {Talent: A Tabular Analytics and Learning Toolbox},
+             journal = {Journal of Machine Learning Research},
+             year    = {2025},
+             volume  = {26},
+             number  = {226},
+             pages   = {1--16},
+             url     = {http://jmlr.org/papers/v26/25-0512.html}
     }
 
 ==========================
@@ -42,6 +46,26 @@ What's New
 ==========================
 
 Here are the recent updates to **TALENT**:
+
+- [2026-10]🌟 Add the September 2026 wave of tabular foundation models: `TabPFN-3.5 <https://github.com/PriorLabs/TabPFN>`_, `LimiX-2 <https://github.com/limix-ldm-ai/LimiX>`_, `NVIDIA Kumo Tabular <https://github.com/NVIDIA/structured-data-models>`_, `Mitra-v2 <https://arxiv.org/abs/2609.04540>`_, `Causilo <https://github.com/nums-ai/causilo>`_, `Xiaomi-TabLDM <https://github.com/xiaomi-research/xiaomi-tabldm>`_ and `EXAONE-Tabular <https://github.com/LGAI-Research/EXAONE-Tabular>`_. All foundation models now download their weights automatically and share one interface.
+
+- [2026-08]🌟 Add `TRC <https://arxiv.org/abs/2603.16569>`_ (TPAMI 2026), a post-hoc representation corrector that trains and freezes an FT-Transformer backbone before learning representation re-estimation and light-space mapping.
+
+- [2026-07]🌟 Add `TabFM <https://github.com/google-research/tabfm>`_ (Google Research, zero-shot tabular foundation model).
+
+- [2026-06]🌟 Add `TabPFN v2.5 <https://arxiv.org/abs/2511.08667>`_ and `TabDPT <https://github.com/layer6ai-labs/TabDPT-inference>`_.
+
+- [2026-06]🌟 Evaluation improvements: calibration metrics (Brier, ECE) for every classifier, decision thresholds tuned on the validation set for binary classification, and a uniform ``predict_proba`` / ``predict_labels`` interface in ``RunResult``.
+
+- [2026-05]🌟 Add `TabPFN v3 <https://github.com/PriorLabs/TabPFN>`_ and `TabICL v2 <https://github.com/soda-inria/tabicl>`_ (regression support added).
+
+- [2026-03]🌟 Updated the TALENT-extension datasets and results. `Link <https://box.nju.edu.cn/d/b7b23a19ee054aaba7b6/?p=%2F&mode=list>`_
+
+- [2025-11]🌟 Add `RFM <https://www.science.org/doi/10.1126/science.adi5639>`_ (Science), `Real-TabPFN <https://arxiv.org/abs/2507.03971>`_ and `LimiX <https://arxiv.org/abs/2509.03505>`_.
+
+- [2025-09]🌟 Add `xRFM <https://arxiv.org/abs/2508.10053>`_.
+
+- [2025-08]🌟 Add `Mitra <https://www.amazon.science/blog/mitra-mixed-synthetic-priors-for-enhancing-tabular-foundation-models>`_.
 
 - [2025-06]🌟 Add `TabAutoPNPNet <https://www.mdpi.com/2079-9292/14/6/1165>`_ (Electronics 2025)
 

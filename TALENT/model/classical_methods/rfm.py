@@ -100,7 +100,15 @@ class RFMMethod(XRFMMethod):
             self.trlog['best_res'] = accuracy_score(self.y['val'], y_val_pred)
 
         time_cost = time.time() - tic
-        
+
+        # Honour a user-selected HPO metric; the block above keeps the legacy
+        # Accuracy / RMSE objective when tune_metric is unset.
+        from TALENT.model.lib.tuning_metric import resolve_tune_metric
+        if resolve_tune_metric(self.args) is not None:
+            self._record_tune_metric(
+                self.model.predict(X_val) if self.is_regression else self.model.predict_proba(X_val)
+            )
+
         checkpoint = {}
         checkpoint['state_dict'] = self.model.state_dict()
 
