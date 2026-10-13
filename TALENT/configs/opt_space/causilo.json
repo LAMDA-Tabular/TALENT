@@ -1,0 +1,9 @@
+{
+    "causilo": {
+        "model": {},
+        "training": {},
+        "general": {
+            "n_estimators": 8
+        }
+    }
+}

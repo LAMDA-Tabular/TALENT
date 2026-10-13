@@ -44,7 +44,25 @@ TALENT offers the following deep learning models, specifically designed to enhan
 32. **`TabPFN v2 <https://doi.org/10.1038/s41586-024-08328-6>`_**: A general model which involves the use of pre-trained deep neural networks that can be directly applied to any tabular task.  
 33. **`T2Gformer <https://arxiv.org/abs/2211.16887>`_**: A Transformer network for tabular learning that processes data guided by relation graphs and uses a Cross-level Readout for global semantics in prediction.  
 34. **`TabICL <https://arxiv.org/abs/2502.05564>`_**: A comparable tabular foundation model with performance on par with TabPFN v2.  
-35. **`TabAutoPNPNet <https://www.mdpi.com/2079-9292/14/6/1165>`_**: A tabular model based on periodicity, particularly the Fourier transform and Chebyshev polynomials, with performance on par with or superior to FT-Transformer.  
+35. **`TabAutoPNPNet <https://www.mdpi.com/2079-9292/14/6/1165>`_**: A tabular model based on periodicity, particularly the Fourier transform and Chebyshev polynomials, with performance on par with or superior to FT-Transformer.
+36. **`Mitra <https://www.amazon.science/blog/mitra-mixed-synthetic-priors-for-enhancing-tabular-foundation-models>`_**: A tabular foundation model learned with mixed synthetic priors.
+37. **`LimiX <https://arxiv.org/abs/2509.03505>`_**: A tabular foundation model that leverages transformers to support a wide range of tasks, from prediction to imputation and causal inference, within a unified architecture.
+38. **`Real-TabPFN <https://arxiv.org/abs/2507.03971>`_**: An enhanced tabular foundation model that extends TabPFNv2 through continued pre-training on real-world datasets for classification tasks.
+39. **`TabPFN v3 <https://github.com/PriorLabs/TabPFN>`_**: TabPFN v3 (PriorLabs 2026), with native context up to ~1M rows × 200 features. Requires ``pip install -U 'tabpfn>=8.0.0'``.
+40. **`TabICL v2 <https://github.com/soda-inria/tabicl>`_**: TabICL v2 (ICML 2026), supporting both classification and regression. Requires ``pip install -U 'tabicl>=2.0.0'``.
+41. **`TabPFN v2.5 <https://arxiv.org/abs/2511.08667>`_**: TabPFN v2.5 (PriorLabs, Nov 2025), the intermediate release between v2 and v3, scaling in-context learning to ~50k rows × 2k features. Requires ``pip install -U 'tabpfn>=8.0.0'``.
+42. **`TabDPT <https://github.com/layer6ai-labs/TabDPT-inference>`_**: A tabular foundation model from Layer 6 AI that combines in-context learning with retrieval and self-supervised pre-training on real data. Requires ``pip install -U tabdpt``.
+43. **`TabFM <https://github.com/google-research/tabfm>`_**: Google's zero-shot tabular foundation model for classification (up to 10 classes) and regression. Requires ``pip install -U "tabfm[pytorch]"``; the model weights use the TabFM Non-Commercial License.
+44. **`TRC <https://arxiv.org/abs/2603.16569>`_**: A post-hoc Tabular Representation Corrector (TPAMI 2026) that freezes a trained FT-Transformer backbone, learns to remove representation shift, and maps corrected representations into a compact light-embedding space.
+45. **`TabPFN-3.5 <https://github.com/PriorLabs/TabPFN>`_**: The successor of TabPFN-3 (PriorLabs, Sep 2026) with native context up to ~1M rows × 20k features. Requires ``pip install -U 'tabpfn>=9.0.0'``; the weights use a non-commercial license.
+46. **`Kumo Tabular <https://github.com/NVIDIA/structured-data-models>`_**: NVIDIA's tabular foundation model (Sep 2026, small / medium / large) under the commercially usable OpenMDW-1.1 license. Requires Python >= 3.11 and ``pip install git+https://github.com/NVIDIA/structured-data-models.git``.
+47. **`Mitra-v2 <https://arxiv.org/abs/2609.04540>`_**: The second-generation Mitra (AutoGluon, Sep 2026) for classification and regression (1000-bin distributional head), run zero-shot.
+48. **`Causilo <https://github.com/nums-ai/causilo>`_**: A tabular foundation model from Nums AI (Sep 2026). Requires ``pip install -U causilo`` (PyTorch >= 2.13); the weights use the non-commercial Causilo License.
+49. **`Xiaomi-TabLDM <https://github.com/xiaomi-research/xiaomi-tabldm>`_**: Xiaomi's tabular foundation model (Sep 2026). Requires ``pip install git+https://github.com/xiaomi-research/xiaomi-tabldm.git``.
+50. **`EXAONE-Tabular <https://github.com/LGAI-Research/EXAONE-Tabular>`_**: LG AI Research's tabular foundation model (2026), weights for research and education only. Requires Python >= 3.11 and ``pip install "exaonetabular @ git+https://github.com/LGAI-Research/EXAONE-Tabular.git"``.
+51. **`LimiX-2 <https://github.com/limix-ldm-ai/LimiX>`_**: The 400M-parameter successor of LimiX (StableAI, Sep 2026) for classification (2-10 classes) and regression; weights under the StableAI LimiX Non-Commercial License. Requires Python >= 3.12 and ``pip install git+https://github.com/limix-ldm-ai/LimiX.git``.
+
+All foundation models download their pre-trained weights automatically on first use unless the checkpoint is bundled under ``TALENT/model/models/``; ``TALENT.get_method_spec(name).weights`` states the source of each model.
 
 ==========================
 Classical Methods
@@ -63,6 +81,8 @@ TALENT integrates the following classical machine learning methods, which serve 
 9. **Random Forest**: An ensemble learning method that constructs multiple decision trees and merges them to improve the accuracy and robustness of predictions.
 10. **Support Vector Machine (SVM)**: A powerful classification method that finds the hyperplane best separating different classes of data.
 11. **XGBoost**: An advanced gradient boosting algorithm that is particularly effective for structured/tabular data and provides robust performance in competition settings.
+12. `RFM <https://www.science.org/doi/10.1126/science.adi5639>`_: A non-deep, backpropagation-free feature learning algorithm that iteratively applies AGOP to a kernel machine to adaptively learn task-specific features.
+13. `xRFM <https://arxiv.org/abs/2508.10053>`_: Combines RFMs with an adaptive tree structure, enabling it to learn features local to data subsets and scale log-linearly with the number of samples.
 
 ==========================
 Methodology Summary

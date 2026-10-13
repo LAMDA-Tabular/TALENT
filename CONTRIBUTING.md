@@ -40,6 +40,23 @@ For methods requiring training process changes:
 - Partially override functions from `model/methods/base.py`
 - Refer to existing implementations in `model/methods/`
 
+For pre-trained foundation models with a scikit-learn style estimator
+(`fit` / `predict` / `predict_proba`):
+- Inherit from `SklearnFoundationMethod` in `model/methods/foundation_base.py`
+  and implement only `construct_model(model_config=None, cat_indices=None)`
+  (see e.g. `model/methods/causilo.py`). Data formatting, the training-row cap,
+  fitting, prediction and metrics are shared.
+- Register it with `normalization="none"`, `num_policy="none"`,
+  `cat_policy=("indices",)` and `supports_hpo=False`, set
+  `train_row_limit` if the model has a context-size limit, and describe
+  where the pre-trained weights come from in `weights=` (shown to users
+  when loading them fails). Weights should download automatically; use
+  `download_from_hf_hub` in `model/method_registry.py` for Hugging Face
+  checkpoints that are not bundled.
+- Read the ensemble size from `config['general']['n_estimators']`
+  (`resolve_n_estimators` in `foundation_base.py`), so the option has the
+  same name for every foundation model.
+
 
 
 ## Committer

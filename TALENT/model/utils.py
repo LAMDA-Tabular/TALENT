@@ -27,6 +27,25 @@ def check_softmax(logits):
         return logits
 
 
+def probability_nll(probabilities, labels):
+    """
+    Mean negative log-likelihood of ``labels`` under predicted class probabilities.
+
+    Use this as the reported loss for methods whose ``predict`` returns
+    probabilities: ``F.cross_entropy`` expects logits and would apply a second
+    softmax on top of the probabilities.
+
+    :param probabilities: (N, K) array or tensor of class probabilities
+    :param labels: (N,) integer class labels
+    :return: float
+    """
+    if hasattr(probabilities, 'detach'):
+        probabilities = probabilities.detach().cpu().numpy()
+    p = torch.as_tensor(np.asarray(probabilities, dtype=np.float64))
+    y = torch.as_tensor(np.asarray(labels), dtype=torch.long).reshape(-1)
+    return torch.nn.functional.nll_loss(torch.log(p.clamp_min(1e-12)), y).item()
+
+
 def mkdir(path):
     """
     Create a directory if it does not exist.
@@ -324,6 +343,10 @@ def get_classical_args():
     parser.add_argument('--model_path', type=str, default=default_args['model_path'])
     parser.add_argument('--evaluate_option', type=str, default=default_args['evaluate_option'])
     args = parser.parse_args()
+    # Fail fast with a readable message (instead of a bare assert inside the
+    # method) when the preprocessing flags violate the method's requirements.
+    from TALENT.model.method_registry import get_method_spec
+    get_method_spec(args.model_type).validate_args(args)
 
     set_gpu(args.gpu)
     save_path1 = '-'.join([args.dataset, args.model_type])
@@ -415,8 +438,12 @@ def get_deep_args():
     parser.add_argument('--dataset_path', type=str, default=default_args['dataset_path'])
     parser.add_argument('--model_path', type=str, default=default_args['model_path'])
     parser.add_argument('--use_float', action='store_true', default=False,
-                        help='Whether to use float type for model and data (default: True)')
+                        help='Use float32 instead of float64 for model and data (default: False)')
     args = parser.parse_args()
+    # Fail fast with a readable message (instead of a bare assert inside the
+    # method) when the preprocessing flags violate the method's requirements.
+    from TALENT.model.method_registry import get_method_spec
+    get_method_spec(args.model_type).validate_args(args)
 
     set_gpu(args.gpu)
     save_path1 = '-'.join([args.dataset, args.model_type])
@@ -532,7 +559,7 @@ def show_results(args, info, metric_name, loss_list, results_list, time_list):
     # Printing results
     print(f'{args.model_type}: {args.seed_num} Trials')
     for name in metric_name:
-        if info['task_type'] == 'regression' and name != 'Time':
+        if info['task_type'] == 'regression' and not name.endswith('Time'):
             formatted_results = ', '.join(['{:.8e}'.format(e) for e in metric_arrays[name]])
             print(f'{name} Results: {formatted_results}')
             print(f'{name} MEAN = {mean_metrics[name]:.8e} ± {std_metrics[name]:.8e}')
@@ -571,6 +598,22 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info):
     import optuna
     import optuna.samplers
     import optuna.trial
+    from TALENT.model.lib.tuning_metric import (
+        validate_tune_metric, assert_tune_metric_supported, resolve_tune_metric,
+    )
+    # Validate here as well so the CLI path fails fast on a typo (the Python
+    # API already validates before calling this function).
+    validate_tune_metric(resolve_tune_metric(args))
+    assert_tune_metric_supported(args.model_type, args)
+    # The tuned config depends on the objective, so a metric-specific search
+    # gets its own cache file; tune_metric=None keeps the historical filename.
+    tune_metric = resolve_tune_metric(args)
+    tuned_config_path = osp.join(
+        args.save_path,
+        '{}-tuned.json'.format(args.model_type) if tune_metric is None
+        else '{}-tuned-{}.json'.format(args.model_type, tune_metric),
+    )
+
     def objective(trial):
         config = {}
         try:
@@ -718,8 +761,8 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info):
             from TALENT.model.lib.tuning_metric import worst_objective_value
             return worst_objective_value(args, info['task_type'] == 'regression')
 
-    if osp.exists(osp.join(args.save_path, '{}-tuned.json'.format(args.model_type))) and args.retune == False:
-        with open(osp.join(args.save_path, '{}-tuned.json'.format(args.model_type)), 'rb') as fp:
+    if osp.exists(tuned_config_path) and args.retune == False:
+        with open(tuned_config_path, 'rb') as fp:
             args.config = json.load(fp)
     else:
         # get data property. The optimization direction follows the configured
@@ -752,7 +795,7 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info):
         print('Best Hyper-Parameters')
         print(trial_configs[best_trial_id])
         args.config = trial_configs[best_trial_id]
-        with open(osp.join(args.save_path, '{}-tuned.json'.format(args.model_type)), 'w') as fp:
+        with open(tuned_config_path, 'w') as fp:
             json.dump(args.config, fp, sort_keys=True, indent=4)
     return args
 

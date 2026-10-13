@@ -89,7 +89,7 @@ class PTARLMethod(Method):
 
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
 
-        # FIX: Denormalize regression predictions
+        # Denormalize regression predictions back to original scale
         if self.is_regression and self.y_info.get('policy') == 'mean_std':
             test_logit = test_logit * self.y_info['std'] + self.y_info['mean']
 

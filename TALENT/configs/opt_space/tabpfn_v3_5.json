@@ -1,0 +1,11 @@
+{
+    "tabpfn_v3_5": {
+        "model": {},
+        "training": {},
+        "general": {
+            "ignore_pretraining_limits": true,
+            "n_estimators": "auto",
+            "fast": false
+        }
+    }
+}

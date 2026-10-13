@@ -108,7 +108,21 @@ class classical_methods(object, metaclass=abc.ABCMeta):
                 self.trlog['best_res'] = accuracy_score(y_val, y_pred)
             return
         logit = self.model.predict(val_features) if self.is_regression else self._val_proba(val_features)
-        vres, names = self.metric(logit, y_val, self.y_info)
+        self._record_tune_metric(logit)
+
+    def _record_tune_metric(self, val_output):
+        """Set ``trlog['best_res']`` from validation-set outputs using ``args.tune_metric``.
+
+        :param val_output: regression predictions, or class probabilities for
+            classification (numpy array or torch tensor).
+        """
+        from TALENT.model.lib.tuning_metric import select_objective
+        if hasattr(val_output, 'detach'):
+            val_output = val_output.detach().cpu().numpy()
+        val_output = np.asarray(val_output)
+        if self.is_regression:
+            val_output = val_output.reshape(-1)
+        vres, names = self.metric(val_output, self.y['val'], self.y_info)
         self.trlog['best_res'], _ = select_objective(vres, names, self.args, self.is_regression)
 
     def metric(self, predictions, labels, y_info, threshold=None):

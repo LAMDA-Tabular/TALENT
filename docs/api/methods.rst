@@ -209,6 +209,8 @@ Core Base Methods
    * **F1 Score:** Binary F1 score - :math:`2 \cdot \frac{precision \cdot recall}{precision + recall}`
    * **Log Loss:** Cross-entropy loss
    * **AUC:** Area under ROC curve for probability predictions
+   * **Brier:** Brier score (mean squared error of the predicted probabilities; lower is better)
+   * **ECE:** Expected Calibration Error with 15 equal-width bins (lower is better)
    
    **Multi-class Classification:**
    
@@ -218,6 +220,8 @@ Core Base Methods
    * **Macro F1:** Macro-averaged F1 score
    * **Log Loss:** Cross-entropy loss
    * **Macro AUC:** One-vs-Rest AUC score
+   * **Brier:** Multi-class Brier score (lower is better)
+   * **ECE:** Expected Calibration Error with 15 equal-width bins (lower is better)
 
 Utility Functions
 -----------------
@@ -536,7 +540,7 @@ Foundation Model Methods
 .. class:: TabPFNMethod
    :noindex:
 
-   Prior-free neural network method using pre-trained foundation models.
+   Prior-Data Fitted Network (PFN) method using pre-trained foundation models.
    
    **Features:**
    * Pre-trained weights for immediate deployment

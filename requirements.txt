@@ -20,3 +20,9 @@ torch>=2.8.0
 xgboost>=2.0.3
 lightgbm>=4.3.0
 catboost>=1.2.3
+# RFM / xRFM
+xrfm>=0.3.5
+# Checkpoint download / loading for the bundled foundation models
+# (TabPFN v2, TabICL, Mitra, LimiX)
+huggingface_hub>=0.23.0
+safetensors>=0.4.0

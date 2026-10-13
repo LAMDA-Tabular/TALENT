@@ -168,7 +168,15 @@ class XRFMMethod(classical_methods):
             self.trlog['best_res'] = (mse ** 0.5) * self.y_info['std']  # Convert MSE to RMSE and scale
 
         time_cost = time.time() - tic
-        
+
+        # Honour a user-selected HPO metric; the block above keeps the legacy
+        # Accuracy / RMSE objective when tune_metric is unset.
+        from TALENT.model.lib.tuning_metric import resolve_tune_metric
+        if resolve_tune_metric(self.args) is not None:
+            self._record_tune_metric(
+                self.model.predict(X_val) if self.is_regression else self.model.predict_proba(X_val)
+            )
+
         checkpoint = {}
         checkpoint['state_dict'] = self.model.get_state_dict()
 

@@ -21,7 +21,9 @@ from TALENT.model.lib.data import (
     data_label_process,
     data_nan_process,
 )
+from TALENT.model.method_registry import weights_download_hint
 from TALENT.model.methods.base import Method
+from TALENT.model.utils import probability_nll
 
 
 class TabFMMethod(Method):
@@ -204,11 +206,11 @@ class TabFMMethod(Method):
         X_train, y_train = self._subsample_frame(X_train, y_train)
         self.sampled_X = X_train
         self.sampled_Y = y_train
-        self.construct_model()
-
-        tic = time.time()
-        self.model.fit(X_train, y_train)
-        self.fit_time = time.time() - tic
+        with weights_download_hint(getattr(self.args, "model_type", "tabfm")):
+            self.construct_model()
+            tic = time.time()
+            self.model.fit(X_train, y_train)
+            self.fit_time = time.time() - tic
 
     def predict(self, data, info, model_name):
         N, C, y = data
@@ -229,9 +231,8 @@ class TabFMMethod(Method):
             t_lab = torch.tensor(test_label, dtype=torch.float32).reshape(-1)
             vl = self.criterion(t_pred, t_lab).item()
         else:
-            vl = self.criterion(
-                torch.tensor(test_logit), torch.tensor(test_label)
-            ).item()
+            # predict_proba returns probabilities, so the loss is their NLL.
+            vl = probability_nll(test_logit, test_label)
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
 
         if self.is_regression and self.y_info.get("policy") == "mean_std":

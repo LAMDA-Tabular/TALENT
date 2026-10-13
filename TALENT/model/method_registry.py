@@ -30,6 +30,9 @@ Schema:
     train_row_limit : int | None -- soft cap on training-set size (e.g.
                       foundation models with limited context). The runner
                       and HPO loops respect this when sampling.
+    weights         : str | None -- where a pre-trained model's weights come
+                      from and how they are obtained (foundation models);
+                      also shown when loading the weights fails.
     notes           : str
 """
 
@@ -73,6 +76,92 @@ def resolve_bundled_path(relative: str) -> Optional[str]:
     except Exception:
         pass
     return None
+
+
+def download_from_hf_hub(repo_id: str, filename: Optional[str] = None) -> str:
+    """Download a checkpoint from the Hugging Face Hub and return its local path.
+
+    Fallback for checkpoints that are not bundled with the package. With
+    ``filename`` a single file is fetched; without it the whole repository
+    snapshot is fetched and its directory is returned. Downloads are cached
+    by ``huggingface_hub``, so repeated runs do not re-download.
+    """
+    try:
+        from huggingface_hub import hf_hub_download, snapshot_download
+    except ImportError as e:
+        raise ImportError(
+            f"The checkpoint from {repo_id!r} is not bundled with TALENT and "
+            "`huggingface_hub` is not installed to download it. Install it via "
+            "`pip install huggingface_hub`, or place the checkpoint manually."
+        ) from e
+    if filename is not None:
+        return hf_hub_download(repo_id=repo_id, filename=filename)
+    return snapshot_download(repo_id=repo_id)
+
+
+def talent_cache_dir() -> str:
+    """Directory for weights that are not managed by the Hugging Face cache.
+
+    ``$TALENT_CACHE_DIR`` if set, otherwise ``~/.cache/talent``.
+    """
+    return os.environ.get("TALENT_CACHE_DIR") or os.path.join(
+        os.path.expanduser("~"), ".cache", "talent"
+    )
+
+
+# Exception class names (or name fragments) that indicate the pretrained
+# weights could not be downloaded / authorised / found.
+_WEIGHTS_ERROR_NAMES = (
+    "GatedRepo", "RepositoryNotFound", "RevisionNotFound", "EntryNotFound",
+    "LocalEntryNotFound", "HfHubHTTPError", "OfflineModeIsEnabled", "HTTPError",
+    "ConnectTimeout", "ReadTimeout", "SSLError", "License", "Token", "Auth",
+)
+_WEIGHTS_ERROR_MODULES = ("huggingface_hub", "requests", "urllib3", "urllib.error")
+
+
+def _is_weights_error(exc: BaseException) -> bool:
+    if isinstance(exc, (FileNotFoundError, PermissionError, ConnectionError, TimeoutError)):
+        return True
+    for cls in type(exc).__mro__:
+        module = getattr(cls, "__module__", "") or ""
+        if module.startswith(_WEIGHTS_ERROR_MODULES):
+            return True
+        if any(fragment in cls.__name__ for fragment in _WEIGHTS_ERROR_NAMES):
+            return True
+    return False
+
+
+class weights_download_hint:
+    """Context manager that explains how to obtain a model's pretrained weights.
+
+    Wrap the code that loads or downloads a foundation model's checkpoint.
+    Download / authentication / missing-file errors are re-raised as a
+    ``RuntimeError`` naming the weight source declared in the method registry
+    (``MethodSpec.weights``) and the usual fixes; all other errors propagate
+    unchanged.
+    """
+
+    def __init__(self, model_type: str):
+        self.model_type = model_type
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if exc is None or not isinstance(exc, Exception) or not _is_weights_error(exc):
+            return False
+        spec = METHOD_REGISTRY.get(self.model_type)
+        source = spec.weights if spec is not None and spec.weights else "see the method's documentation"
+        raise RuntimeError(
+            f"Could not load the pretrained weights for {self.model_type!r} "
+            f"({type(exc).__name__}: {exc}).\n"
+            f"Weights: {source}\n"
+            "Common fixes: check the internet connection; for gated or licensed "
+            "Hugging Face repositories, accept the license on the model page and "
+            "log in (`huggingface-cli login` or set HF_TOKEN); on machines without "
+            "internet access, download the weights once on a connected machine and "
+            "reuse the cache (HF_HOME, HF_HUB_OFFLINE=1, TALENT_CACHE_DIR)."
+        ) from exc
 
 
 # ----------------------------------------------------------------------------
@@ -128,6 +217,7 @@ class MethodSpec:
     supports_regression: bool = True
     supports_classification: bool = True
     train_row_limit: Optional[int] = None
+    weights: Optional[str] = None
     notes: str = ""
 
     def get_class(self):
@@ -184,6 +274,15 @@ _CPU = Hardware.CPU
 _LOGITS = OutputType.LOGITS
 _PROBS = OutputType.PROBABILITIES
 _LABELS = OutputType.CLASS_LABELS
+
+
+# Weight source shared by the `tabpfn`-package models (v2.5 / v3 / v3.5).
+_TABPFN_WEIGHTS = (
+    "Downloaded automatically by the `tabpfn` package (Hugging Face Prior-Labs/...). "
+    "The model license must be accepted once; for headless runs accept it on the "
+    "Prior Labs platform and set TABPFN_TOKEN (and TABPFN_NO_BROWSER=1), see "
+    "https://docs.priorlabs.ai/models/accessing-model-weights."
+)
 
 
 _METHODS_DEEP = [
@@ -269,76 +368,154 @@ _METHODS_DEEP = [
           _DEEP, _GPU, _LOGITS, cat_policy=("tabr_ohe",)),
 
     # ----- Foundation models -----
+    # `weights` documents where each model's pre-trained weights come from; it
+    # is also shown when loading them fails (see `weights_download_hint`).
     _spec("tabpfn", "TALENT.model.methods.tabpfn", "TabPFNMethod",
           _DEEP, _GPU, _PROBS, cat_policy=("indices",),
           normalization="none", num_policy="none",
           supports_hpo=False, supports_regression=False,
           train_row_limit=1_000,
+          weights="Bundled with TALENT (TALENT/model/models/models_tabpfn/).",
           notes="TabPFN v1 (bundled). Up to 1k samples; classification only."),
     _spec("tabpfn_v2", "TALENT.model.methods.tabpfn_v2", "TabPFNMethod",
           _DEEP, _GPU, _PROBS, cat_policy=("indices",),
           normalization="none", num_policy="none",
           supports_hpo=False, train_row_limit=10_000,
+          weights="Downloaded automatically from Hugging Face (Prior-Labs/TabPFN-v2-clf, "
+                  "Prior-Labs/TabPFN-v2-reg) unless bundled under TALENT/model/models/models_tabpfn/.",
           notes="TabPFN v2 (bundled, Nature 2025)."),
+    _spec("tabpfn_real", "TALENT.model.methods.tabpfn_real", "TabPFNRealMethod",
+          _DEEP, _GPU, _PROBS, cat_policy=("indices",),
+          normalization="none", num_policy="none",
+          supports_hpo=False, supports_regression=False, train_row_limit=10_000,
+          weights="Downloaded automatically from Hugging Face (Prior-Labs/TabPFN-v2-clf, "
+                  "tabpfn-v2-classifier-finetuned-zk73skhh.ckpt) unless bundled under "
+                  "TALENT/model/models/models_tabpfn/.",
+          notes="Real-TabPFN (continued pre-training on real datasets); classification only."),
     _spec("tabpfn_v2_5", "TALENT.model.methods.tabpfn_v2_5", "TabPFNv2_5Method",
           _DEEP, _GPU, _PROBS, cat_policy=("indices",),
           normalization="none", num_policy="none",
           supports_hpo=False, train_row_limit=50_000,
-          notes="TabPFN v2.5 (PriorLabs Nov 2025; external `tabpfn>=8.0.0`). "
-                "~50k rows x 2k features native context."),
+          weights=_TABPFN_WEIGHTS,
+          notes="TabPFN v2.5 (PriorLabs Nov 2025; external `tabpfn>=8.0.0`, pinned via "
+                "ModelVersion.V2_5). ~50k rows x 2k features native context."),
     _spec("tabpfn_v3", "TALENT.model.methods.tabpfn_v3", "TabPFNv3Method",
           _DEEP, _GPU, _PROBS, cat_policy=("indices",),
           normalization="none", num_policy="none",
           supports_hpo=False, train_row_limit=1_000_000,
-          notes="TabPFN v3 (external `tabpfn>=8.0.0`). ~1M-row context."),
-    _spec("tabpfn_real", "TALENT.model.methods.tabpfn_real", "TabPFNRealMethod",
+          weights=_TABPFN_WEIGHTS,
+          notes="TabPFN v3 (external `tabpfn>=8.0.0`, pinned via ModelVersion.V3). "
+                "~1M-row context."),
+    _spec("tabpfn_v3_5", "TALENT.model.methods.tabpfn_v3_5", "TabPFNv3_5Method",
           _DEEP, _GPU, _PROBS, cat_policy=("indices",),
           normalization="none", num_policy="none",
-          supports_hpo=False, train_row_limit=10_000,
-          notes="Real-TabPFN (continued pre-training on real datasets)."),
+          supports_hpo=False, train_row_limit=1_000_000,
+          weights=_TABPFN_WEIGHTS,
+          notes="TabPFN-3.5 (PriorLabs Sep 2026; external `tabpfn>=9.0.0`). "
+                "~1M rows x 20k features; set general.fast for TabPFN-3.5-Fast."),
     _spec("hyperfast", "TALENT.model.methods.hyperfast", "HyperFastMethod",
           _DEEP, _GPU, _PROBS, cat_policy=("indices",),
           normalization="none", num_policy="none",
           supports_hpo=False, supports_regression=False,
+          weights="Downloaded automatically from figshare to $TALENT_CACHE_DIR/hyperfast/ "
+                  "(default ~/.cache/talent) unless bundled under TALENT/model/models/hyperfast/.",
           notes="HyperFast meta-trained hypernetwork; classification only."),
     _spec("tabptm", "TALENT.model.methods.tabptm", "TabPTMMethod",
           _DEEP, _GPU, _LOGITS, cat_policy=("ohe",),
           normalization="standard", num_policy="none",
-          supports_hpo=False),
+          supports_hpo=False,
+          weights="Regression checkpoint bundled with TALENT (TALENT/model/models/models_tabptm/); "
+                  "the classification checkpoint is not publicly available.",
+          notes="TabPTM meta-representation model; only the regression checkpoint is distributed."),
     _spec("tabicl", "TALENT.model.methods.tabicl", "TabICLMethod",
           _DEEP, _GPU, _PROBS, cat_policy=("indices",),
           normalization="none", num_policy="none",
           supports_hpo=False, supports_regression=False,
           train_row_limit=500_000,
+          weights="Downloaded automatically from Hugging Face (jingang/TabICL-clf) unless "
+                  "bundled under TALENT/model/models/models_tabicl/.",
           notes="TabICL v1.1 (bundled); classification only — use tabicl_v2 for regression."),
     _spec("tabicl_v2", "TALENT.model.methods.tabicl_v2", "TabICLv2Method",
           _DEEP, _GPU, _PROBS, cat_policy=("indices",),
           normalization="none", num_policy="none",
           supports_hpo=False, train_row_limit=1_000_000,
+          weights="Downloaded automatically by the `tabicl` package from Hugging Face (jingang/TabICL).",
           notes="TabICL v2 (external `tabicl>=2.0.0`); supports regression."),
     _spec("mitra", "TALENT.model.methods.mitra", "MitraMethod",
           _DEEP, _GPU, _LOGITS, cat_policy=("indices",),
           normalization="none", num_policy="none",
           supports_hpo=False, train_row_limit=10_000,
+          weights="Downloaded automatically from Hugging Face (autogluon/mitra-classifier, "
+                  "autogluon/mitra-regressor) unless bundled under TALENT/model/models/models_mitra/.",
           notes="Mitra (Amazon Science). ICL with cross-attention; O(N_train * N_test) memory."),
+    _spec("mitra_v2", "TALENT.model.methods.mitra_v2", "MitraV2Method",
+          _DEEP, _GPU, _LOGITS, cat_policy=("indices",),
+          normalization="none", num_policy="none",
+          supports_hpo=False, train_row_limit=10_000,
+          weights="Downloaded automatically from Hugging Face (autogluon/mitra-classifier-2, "
+                  "autogluon/mitra-regressor-2) unless bundled under TALENT/model/models/models_mitra_v2/.",
+          notes="Mitra-v2 (AutoGluon, Sep 2026), zero-shot via the bundled Mitra code; the "
+                "1000-bin regression head is decoded with the mean over bins."),
     _spec("limix", "TALENT.model.methods.limix", "LimiXMethod",
           _DEEP, _GPU, _PROBS, cat_policy=("indices",),
           normalization="none", num_policy="none",
           supports_hpo=False,
-          notes="LimiX tabular foundation model; classifier returns probabilities."),
+          weights="Downloaded automatically from Hugging Face (stable-ai/LimiX-16M) unless "
+                  "bundled under TALENT/model/models/models_limix/.",
+          notes="LimiX-16M (bundled LimiX v1 code); classifier returns probabilities."),
+    _spec("limix_v2", "TALENT.model.methods.limix_v2", "LimiXV2Method",
+          _DEEP, _GPU, _PROBS, cat_policy=("indices",),
+          normalization="none", num_policy="none",
+          supports_hpo=False,
+          weights="Downloaded automatically from Hugging Face (stable-ai/LimiX-2, LimiX-2.ckpt) "
+                  "unless bundled under TALENT/model/models/models_limix/.",
+          notes="LimiX-2 (StableAI, Sep 2026; external `LimiX` package from GitHub, "
+                "Python >= 3.12). Classification with 2-10 classes."),
     _spec("tabdpt", "TALENT.model.methods.tabdpt", "TabDPTMethod",
           _DEEP, _GPU, _PROBS, cat_policy=("indices",),
           normalization="none", num_policy="none",
           supports_hpo=False,
+          weights="Downloaded automatically by the `tabdpt` package from Hugging Face (Layer6/TabDPT).",
           notes="TabDPT (Layer 6 AI). ICL + retrieval; supports both "
                 "classification and regression. External `tabdpt` package."),
     _spec("tabfm", "TALENT.model.methods.tabfm", "TabFMMethod",
           _DEEP, _GPU, _PROBS, cat_policy=("indices",),
           normalization="none", num_policy="none",
           supports_hpo=False,
+          weights="Downloaded automatically by the `tabfm` package from Hugging Face "
+                  "(google/tabfm-1.0.0-pytorch).",
           notes="TabFM v1.0.0 (Google Research). Zero-shot ICL foundation "
                 "model via optional `tabfm[pytorch]`; classification is "
                 "limited to 10 classes by the upstream model."),
+    _spec("kumo_tabular", "TALENT.model.methods.kumo_tabular", "KumoTabularMethod",
+          _DEEP, _GPU, _PROBS, cat_policy=("indices",),
+          normalization="none", num_policy="none",
+          supports_hpo=False,
+          weights="Downloaded automatically by `structured-data-models` from Hugging Face "
+                  "(nvidia/Kumo-Tabular).",
+          notes="NVIDIA Kumo Tabular (Sep 2026; external `structured-data-models`, "
+                "Python >= 3.11). Sizes small/medium/large via general.size."),
+    _spec("causilo", "TALENT.model.methods.causilo", "CausiloMethod",
+          _DEEP, _GPU, _PROBS, cat_policy=("indices",),
+          normalization="none", num_policy="none",
+          supports_hpo=False,
+          weights="Downloaded automatically by the `causilo` package from Hugging Face (nums-ai/causilo).",
+          notes="Causilo (Nums AI, Sep 2026; external `causilo`, PyTorch >= 2.13)."),
+    _spec("tabldm", "TALENT.model.methods.tabldm", "TabLDMMethod",
+          _DEEP, _GPU, _PROBS, cat_policy=("indices",),
+          normalization="none", num_policy="none",
+          supports_hpo=False,
+          weights="Downloaded automatically by the `tabldm` package from Hugging Face "
+                  "(occams/Xiaomi-TabLDM).",
+          notes="Xiaomi-TabLDM (Sep 2026; external `tabldm`, installed from GitHub)."),
+    _spec("exaone_tabular", "TALENT.model.methods.exaone_tabular", "EXAONETabularMethod",
+          _DEEP, _GPU, _PROBS, cat_policy=("indices",),
+          normalization="none", num_policy="none",
+          supports_hpo=False,
+          weights="Downloaded automatically by the `exaonetabular` package from Hugging Face "
+                  "(LG-AI-Research/EXAONE-Tabular).",
+          notes="EXAONE-Tabular (LG AI Research, 2026; external `exaonetabular`, "
+                "installed from GitHub, Python >= 3.11)."),
 ]
 
 
@@ -370,11 +547,11 @@ _METHODS_CLASSICAL = [
           _CLASSICAL, _CPU, _PROBS, cat_policy=_ALL_CAT_POLICIES),
     _spec("NCM", "TALENT.model.classical_methods.ncm", "NCMMethod",
           _CLASSICAL, _CPU, _PROBS, cat_policy=_ALL_CAT_POLICIES,
-          supports_regression=False,
+          supports_regression=False, supports_hpo=False,
           notes="Nearest class mean with softmax over negative distances."),
     _spec("NaiveBayes", "TALENT.model.classical_methods.naivebayes", "NaiveBayesMethod",
           _CLASSICAL, _CPU, _PROBS, cat_policy=_ALL_CAT_POLICIES,
-          supports_regression=False),
+          supports_regression=False, supports_hpo=False),
     _spec("rfm", "TALENT.model.classical_methods.rfm", "RFMMethod",
           _CLASSICAL, _GPU, _PROBS, cat_policy=("ohe",), normalization="standard",
           notes="RFM (Recursive Feature Machines). GPU-accelerated kernel method."),

@@ -26,7 +26,21 @@ Some methods in TALENT require additional dependencies for specific tasks. If yo
    .. code-block:: bash
 
       conda install faiss-gpu -c pytorch
-   
+
+- **Tabular foundation models** that are not bundled with TALENT need their upstream package (each method raises an ``ImportError`` with the install command if it is missing):
+
+  - ``tabpfn_v2_5`` / ``tabpfn_v3``: ``pip install -U 'tabpfn>=8.0.0'``; ``tabpfn_v3_5``: ``pip install -U 'tabpfn>=9.0.0'``
+  - ``tabicl_v2``: ``pip install -U 'tabicl>=2.0.0'``
+  - ``tabdpt``: ``pip install -U tabdpt``
+  - ``tabfm``: ``pip install -U "tabfm[pytorch]"``
+  - ``causilo``: ``pip install -U causilo`` (PyTorch >= 2.13)
+  - ``kumo_tabular``: ``pip install git+https://github.com/NVIDIA/structured-data-models.git`` (Python >= 3.11)
+  - ``tabldm``: ``pip install git+https://github.com/xiaomi-research/xiaomi-tabldm.git``
+  - ``exaone_tabular``: ``pip install "exaonetabular @ git+https://github.com/LGAI-Research/EXAONE-Tabular.git"`` (Python >= 3.11)
+  - ``limix_v2``: ``pip install git+https://github.com/limix-ldm-ai/LimiX.git`` (Python >= 3.12)
+
+  All foundation models download their weights automatically on first use. The bundled ones (TabPFN v2, Real-TabPFN, TabICL, Mitra / Mitra-v2, LimiX / LimiX-2) fetch their checkpoints from the Hugging Face Hub when they are not bundled, which needs ``huggingface_hub`` (listed in ``requirements.txt``). TabPFN v2.5 / v3 / 3.5 require accepting the model license once (set ``TABPFN_TOKEN`` on headless machines). On machines without internet access, run each model once on a connected machine and reuse the caches (``HF_HOME`` with ``HF_HUB_OFFLINE=1``, ``TABPFN_MODEL_CACHE_DIR``, ``TALENT_CACHE_DIR``).
+
 
 ==========================
 Installation
@@ -58,4 +72,4 @@ To install the necessary dependencies for TALENT, you can use the following comm
 Additional Notes
 ==========================
 
-Ensure that your Python version is compatible with the dependencies listed above. TALENT is tested with **Python 3.10** and **PyTorch 2.0.1**. 
+Ensure that your Python version is compatible with the dependencies listed above. TALENT is tested with **Python 3.10** and requires **PyTorch >= 2.8** (see ``pyproject.toml``).

@@ -8,7 +8,7 @@
   <a href=""><img src="https://img.shields.io/github/stars/qile2000/LAMDA-TALENT?color=4fb5ee"></a>
   <a href=""><img src="https://img.shields.io/github/last-commit/qile2000/LAMDA-TALENT?color=blue"></a>
    <br>
-    <img src="https://img.shields.io/badge/PYTORCH-2.0.1-red?style=for-the-badge&logo=pytorch" alt="PyTorch - Version" height="21">
+    <img src="https://img.shields.io/badge/PYTORCH-2.8%2B-red?style=for-the-badge&logo=pytorch" alt="PyTorch - Version" height="21">
     <img src="https://img.shields.io/badge/PYTHON-3.10-red?style=for-the-badge&logo=python&logoColor=white" alt="Python - Version" height="21">
     <a href="">
     <a href='https://lamda-talent.readthedocs.io/en/latest/?badge=latest'>
@@ -80,6 +80,7 @@ Welcome to **TALENT**, a benchmark with a comprehensive machine learning toolbox
 
 ## 📰 What's New
 
+- [2026-10]🌟 Add the September 2026 wave of tabular foundation models: **[TabPFN-3.5](https://github.com/PriorLabs/TabPFN)**, **[LimiX-2](https://github.com/limix-ldm-ai/LimiX)**, **[NVIDIA Kumo Tabular](https://github.com/NVIDIA/structured-data-models)**, **[Mitra-v2](https://arxiv.org/abs/2609.04540)**, **[Causilo](https://github.com/nums-ai/causilo)**, **[Xiaomi-TabLDM](https://github.com/xiaomi-research/xiaomi-tabldm)** and **[EXAONE-Tabular](https://github.com/LGAI-Research/EXAONE-Tabular)**. All foundation models now download their weights automatically and share one interface (`n_estimators`, `sample_size`); `tabpfn_v3` now pins the TabPFN-3 checkpoint (`tabpfn>=9.0` changed the package default to TabPFN-3.5).
 - [2026-08]🌟 Add **[TRC](https://arxiv.org/abs/2603.16569)** (TPAMI 2026), a post-hoc representation corrector that trains and freezes an FT-Transformer backbone before learning representation re-estimation and light-space mapping.
 - [2026-07]🌟 Add **[TabFM](https://github.com/google-research/tabfm)** (Google Research, zero-shot tabular foundation model) as an optional method via `pip install -U "tabfm[pytorch]"`.
 - [2026-06]🌟 Add **[TabPFN v2.5](https://arxiv.org/abs/2511.08667)** (PriorLabs, Nov 2025) and **[TabDPT](https://github.com/layer6ai-labs/TabDPT-inference)** (Layer 6 AI, ICL + retrieval). TALENT now ships the full TabPFN family (v1, v2, v2.5, v3) plus TabDPT alongside the other tabular foundation models.
@@ -163,6 +164,13 @@ TALENT integrates an extensive array of 30+ deep learning architectures for tabu
 44. **[TabDPT](https://github.com/layer6ai-labs/TabDPT-inference)**: A tabular foundation model from Layer 6 AI that combines in-context learning with retrieval and self-supervised pre-training on real data, removing fixed context-size limits. Requires `pip install -U tabdpt`.
 45. **[TabFM](https://github.com/google-research/tabfm)**: Google's zero-shot tabular foundation model for classification and regression, using in-context learning over training rows as context. Requires `pip install -U "tabfm[pytorch]"`; the upstream model weights use the TabFM Non-Commercial License.
 46. **[TRC](https://arxiv.org/abs/2603.16569)**: A post-hoc Tabular Representation Corrector that freezes a trained backbone, learns to remove representation shift, and maps corrected representations into a compact light-embedding space.
+47. **[TabPFN-3.5](https://github.com/PriorLabs/TabPFN)**: TabPFN-3.5 (PriorLabs, Sep 2026), the successor of TabPFN-3 with native context up to ~1M rows × 20k features; set `general.fast` for the TabPFN-3.5-Fast checkpoint. Requires `pip install -U 'tabpfn>=9.0.0'`; the weights use a non-commercial license (for headless runs, set `TABPFN_TOKEN` after accepting it on the Prior Labs platform).
+48. **[Kumo Tabular](https://github.com/NVIDIA/structured-data-models)**: NVIDIA's tabular foundation model (Sep 2026, small / medium / large via `general.size`) for classification and regression; weights under the commercially usable OpenMDW-1.1 license. Requires Python >= 3.11 and `pip install git+https://github.com/NVIDIA/structured-data-models.git`.
+49. **[Mitra-v2](https://arxiv.org/abs/2609.04540)**: The second-generation Mitra (AutoGluon, Sep 2026) for classification and regression (1000-bin distributional head), run zero-shot through TALENT's Mitra code.
+50. **[Causilo](https://github.com/nums-ai/causilo)**: A tabular foundation model from Nums AI (Sep 2026) for classification and regression. Requires `pip install -U causilo` (PyTorch >= 2.13); the weights use the non-commercial Causilo License.
+51. **[Xiaomi-TabLDM](https://github.com/xiaomi-research/xiaomi-tabldm)**: Xiaomi's tabular foundation model (Sep 2026) for classification and regression. Requires `pip install git+https://github.com/xiaomi-research/xiaomi-tabldm.git`; check the model card for the weights license.
+52. **[EXAONE-Tabular](https://github.com/LGAI-Research/EXAONE-Tabular)**: LG AI Research's tabular foundation model (2026) for classification and regression. Requires Python >= 3.11 and `pip install "exaonetabular @ git+https://github.com/LGAI-Research/EXAONE-Tabular.git"`; the weights are for research and education only.
+53. **[LimiX-2](https://github.com/limix-ldm-ai/LimiX)**: The 400M-parameter successor of LimiX (StableAI, Sep 2026) for classification (2-10 classes) and regression. Requires Python >= 3.12 and `pip install git+https://github.com/limix-ldm-ai/LimiX.git`; the weights use the StableAI LimiX Non-Commercial License.
 
 
 🔧 If you want to check the **default hyperparameters and hyperparameter search spaces** of all methods, please visit:  
@@ -297,7 +305,13 @@ for s in TALENT.list_methods(
 
 Both the CLI scripts and the Python API are backed by the same `MethodSpec` registry, so adding a new method requires only a single registry entry (see `TALENT/model/method_registry.py`).
 
-The registry is also the single source of truth for foundation-model training-row caps (`train_row_limit`): TabPFN 1k, TabPFN v2 / Real-TabPFN / Mitra 10k, TabPFN v2.5 50k, TabICL 500k, TabPFN v3 / TabICL v2 1M, TabDPT / TabFM no registry cap. The cap is applied automatically when fitting; setting `config['general']['sample_size']` overrides it for a single run.
+The registry is also the single source of truth for foundation-model training-row caps (`train_row_limit`): TabPFN 1k, TabPFN v2 / Real-TabPFN / Mitra / Mitra-v2 10k, TabPFN v2.5 50k, TabICL 500k, TabPFN v3 / TabPFN-3.5 / TabICL v2 1M; TabDPT, TabFM, LimiX, LimiX-2, Kumo Tabular, Causilo, Xiaomi-TabLDM and EXAONE-Tabular have no registry cap. The cap is applied automatically when fitting; setting `config['general']['sample_size']` overrides it for a single run. Likewise, `config['general']['n_estimators']` sets the ensemble size of every foundation model that has one.
+
+**Pre-trained weights.** Foundation models download their weights automatically on first use (from the Hugging Face Hub, or figshare for HyperFast) unless the checkpoint is bundled under `TALENT/model/models/`; `TALENT.get_method_spec(name).weights` states the source of each model. If loading the weights fails, the error names the source and the usual fixes:
+
+- TabPFN v2.5 / v3 / 3.5: accept the model license once; on headless machines, accept it on the [Prior Labs platform](https://docs.priorlabs.ai/models/accessing-model-weights) and set `TABPFN_TOKEN` (and `TABPFN_NO_BROWSER=1`).
+- Machines without internet access (e.g. cluster compute nodes): run each model once on a connected machine, then reuse the caches (`HF_HOME` with `HF_HUB_OFFLINE=1`, `TABPFN_MODEL_CACHE_DIR`, and `TALENT_CACHE_DIR` for HyperFast).
+- TabPTM: only the regression checkpoint is distributed; the classification checkpoint is not publicly available.
 
 
 
@@ -443,6 +457,11 @@ We thank the following repos for providing helpful components/functions in our w
 - [xRFM](https://github.com/dmbeaglehole/xRFM)
 - [TabDPT](https://github.com/layer6ai-labs/TabDPT-inference)
 - [TabFM](https://github.com/google-research/tabfm)
+- [Structured Data Models (Kumo Tabular)](https://github.com/NVIDIA/structured-data-models)
+- [AutoGluon (Mitra)](https://github.com/autogluon/autogluon)
+- [Causilo](https://github.com/nums-ai/causilo)
+- [Xiaomi-TabLDM](https://github.com/xiaomi-research/xiaomi-tabldm)
+- [EXAONE-Tabular](https://github.com/LGAI-Research/EXAONE-Tabular)
 
 ## 🤗 Contact
 

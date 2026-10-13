@@ -108,6 +108,13 @@ class TabPTMMethod(Method):
         else:
             rel = "model/models/models_tabptm/metaclsA-numK32-Reweight-LR0.001-maneucbra-log.pth"
         ckpt_path = resolve_bundled_path(rel) or osp.join("./TALENT", rel)
+        if not osp.exists(ckpt_path):
+            raise FileNotFoundError(
+                f"TabPTM checkpoint not found: {osp.basename(rel)}. Only the regression "
+                "checkpoint is distributed with TALENT; the meta-trained classification "
+                "checkpoint is not publicly available. If you have it (e.g. from the "
+                f"TabPTM authors), place it at TALENT/{rel}."
+            )
         self.model.load_state_dict(torch.load(ckpt_path)['params'])
         if self.args.use_float:
             self.model.float()
