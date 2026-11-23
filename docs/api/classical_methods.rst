@@ -9,7 +9,7 @@ The classical methods module provides implementations of traditional machine lea
 
 
 Available Methods
-----------------
+-----------------
 
 **Base Components:**
 

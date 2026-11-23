@@ -47,7 +47,9 @@ What's New
 
 Here are the recent updates to **TALENT**:
 
-- [2026-10]🌟 Add the September 2026 wave of tabular foundation models: `TabPFN-3.5 <https://github.com/PriorLabs/TabPFN>`_, `LimiX-2 <https://github.com/limix-ldm-ai/LimiX>`_, `NVIDIA Kumo Tabular <https://github.com/NVIDIA/structured-data-models>`_, `Mitra-v2 <https://arxiv.org/abs/2609.04540>`_, `Causilo <https://github.com/nums-ai/causilo>`_, `Xiaomi-TabLDM <https://github.com/xiaomi-research/xiaomi-tabldm>`_ and `EXAONE-Tabular <https://github.com/LGAI-Research/EXAONE-Tabular>`_. All foundation models now download their weights automatically and share one interface.
+- [2026-11] Added Inpriora, Seldon, Seldon-mini, LimiX-2-1016 and TabDPT 1.3. See :doc:`methods` and :doc:`dependencies`.
+
+- [2026-10]🌟 Add the September 2026 wave of tabular foundation models: `TabPFN-3.5 <https://github.com/PriorLabs/TabPFN>`_, `LimiX-2 <https://github.com/limix-ldm-ai/LimiX>`_, `NVIDIA Kumo Tabular <https://github.com/NVIDIA/structured-data-models>`_, `Mitra-v2 <https://arxiv.org/abs/2609.04540>`_, `Causilo <https://github.com/nums-ai/causilo>`_, `Xiaomi-TabLDM <https://github.com/xiaomi-research/xiaomi-tabldm>`_ and `EXAONE-Tabular <https://github.com/LGAI-Research/EXAONE-Tabular>`_.
 
 - [2026-08]🌟 Add `TRC <https://arxiv.org/abs/2603.16569>`_ (TPAMI 2026), a post-hoc representation corrector that trains and freezes an FT-Transformer backbone before learning representation re-estimation and light-space mapping.
 
@@ -105,7 +107,7 @@ Here are the recent updates to **TALENT**:
 
 - [2024-07]🌟 Add `BiSHop <https://arxiv.org/abs/2404.03830>`_ (ICML 2024).
 
-- [2024-06]🌟 Check out our new baseline `ModernNCA <https://arxiv.org/abs/2407.03257>`_, inspired by traditional **Neighbor Component Analysis**, which outperforms both tree-based and other deep tabular models, while also reducing training time and model size!
+- [2024-06]🌟 Check out our new baseline `ModernNCA <https://arxiv.org/abs/2407.03257>`__, inspired by traditional **Neighbor Component Analysis**, which outperforms both tree-based and other deep tabular models, while also reducing training time and model size!
 
 - [2024-06]🌟 Check out our `benchmark paper <https://arxiv.org/abs/2407.00956>`_ about tabular data, which provides comprehensive evaluations of classical and deep tabular methods based on our toolbox in a fair manner!
 

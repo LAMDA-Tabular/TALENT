@@ -2,22 +2,22 @@
 
 Two ways to use TALENT:
 
-1. **CLI scripts** (original, unchanged):
+1. **CLI scripts** (from the checkout root):
 
    .. code-block:: bash
 
-       python train_model_deep.py --model_type tabpfn_v3
-       python train_model_classical.py --model_type catboost
+       python test/train_model_deep.py --model_type tabpfn_v3
+       python test/train_model_classical.py --model_type catboost
 
-2. **Python API** (added 2026, library mode):
+2. **Python API**:
 
    .. code-block:: python
 
        import TALENT
        from TALENT.model.lib.data import get_dataset
 
-       train_val, test, info = get_dataset("housing", "./data")
-       result = TALENT.run("tabpfn_v3", train_val, test, info)
+       train_val, test, info = get_dataset("bank", "./example_datasets")
+       result = TALENT.run("LogReg", train_val, test, info)
        print(result.metrics, result.metric_names)
 
        # Introspect:
@@ -28,8 +28,8 @@ Two ways to use TALENT:
        for s in TALENT.list_methods(architecture=TALENT.Architecture.DEEP):
            print(s.name)
 
-Both surfaces share a single :class:`MethodSpec` registry, so adding a new
-method requires only a registry entry (no changes to CLI or API code).
+Both surfaces share a single :class:`MethodSpec` registry, which maps
+method IDs to their adapters and supported options.
 """
 
 __version__ = "0.1.0"

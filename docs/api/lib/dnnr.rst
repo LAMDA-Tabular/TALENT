@@ -1,5 +1,5 @@
 **DNNR**
-=======
+========
 
 Enhances KNN by using local gradients and Taylor approximations for more accurate and interpretable predictions.
 

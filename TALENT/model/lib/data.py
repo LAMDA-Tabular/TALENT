@@ -98,12 +98,10 @@ def dataname_to_numpy(dataset_name, dataset_path):
     )
 
 def get_dataset(dataset_name, dataset_path):
-    """
-    Load the dataset from the numpy files.
+    """Return (train_val_data, test_data, info) for a TALENT-format dataset.
 
-    :param dataset_name: str
-    :param dataset_path: str
-    :return: Tuple[ArrayDict, ArrayDict, ArrayDict, Dict[str, Any]]
+    Each data tuple contains numerical features, categorical features and
+    labels keyed by split. An absent feature type is represented by None.
     """
     N, C, y, info = dataname_to_numpy(dataset_name, dataset_path)
     N_trainval = None if N is None else {key: N[key] for key in ["train", "val"]} if "train" in N and "val" in N else None
@@ -179,10 +177,13 @@ def data_nan_process(N_data, C_data, num_nan_policy, cat_nan_policy, num_new_val
             if cat_new_value is None:
                 cat_new_value = '___null___'
                 imputer = None
-            if any(x.any() for x in cat_nan_masks.values()):
-                for k, v in C.items():
-                    cat_nan_indices = np.where(cat_nan_masks[k])
-                    v[cat_nan_indices] = cat_new_value
+            for k, mask in cat_nan_masks.items():
+                if mask.any():
+                    # Fixed-width strings otherwise truncate the same missing token
+                    # differently in the training, validation and test splits.
+                    dtype = np.result_type(C[k].dtype, np.asarray(cat_new_value).dtype)
+                    C[k] = C[k].astype(dtype, copy=False)
+                    C[k][mask] = cat_new_value
         elif cat_nan_policy == 'most_frequent':
             cat_new_value = None
             C_for_imputer = {k: v.astype(object) for k, v in C.items()}

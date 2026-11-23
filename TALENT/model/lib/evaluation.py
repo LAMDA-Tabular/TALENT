@@ -77,10 +77,13 @@ def standardize_predict_proba(
     """
     from TALENT.model.method_registry import OutputType
 
-    if is_regression or output_type == OutputType.CLASS_LABELS:
+    if is_regression or output_type in (None, OutputType.CLASS_LABELS):
         return None
 
     arr = _to_numpy(predictions).astype(np.float64, copy=False)
+
+    if arr.ndim == 2 and arr.shape[1] == 1:
+        arr = arr[:, 0]
 
     if output_type == OutputType.PROBABILITIES:
         if arr.ndim == 1:
@@ -94,7 +97,7 @@ def standardize_predict_proba(
     # OutputType.LOGITS
     if arr.ndim == 1:
         # Sigmoid for a single binary logit.
-        sig = 1.0 / (1.0 + np.exp(-arr))
+        sig = np.exp(-np.logaddexp(0.0, -arr))
         return np.stack([1.0 - sig, sig], axis=1)
 
     # Softmax (numerically stabilised).
@@ -202,7 +205,7 @@ def evaluate(
             if val_proba is not None and val_proba.shape[1] == 2 and val_labels is not None:
                 from TALENT.model.lib.threshold import tune_threshold as _find_threshold
                 threshold, _ = _find_threshold(
-                    val_labels, val_proba, metric=threshold_metric
+                    _to_numpy(val_labels), val_proba, metric=threshold_metric
                 )
 
                 # Recompute the test-set metrics using the tuned threshold.

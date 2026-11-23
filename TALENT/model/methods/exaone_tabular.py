@@ -41,6 +41,8 @@ class EXAONETabularMethod(SklearnFoundationMethod):
         for k in ('compute_dtype', 'max_vram_bytes', 'weights', 'revision'):
             if k in general:
                 kwargs[k] = general[k]
+        if general.get('model_path') is not None:
+            kwargs['weights'] = general['model_path']
         model_cls = EXAONETabularRegressor if self.is_regression else EXAONETabularClassifier
         self.model = model_cls.from_pretrained(**kwargs)
 

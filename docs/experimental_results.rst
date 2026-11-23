@@ -23,35 +23,39 @@ Below are the summarized results for different task types (binary classification
 
 The visualizations use average performance rank to compare models, where lower ranks represent better performance across the tasks.
 
-### Binary Classification
+Binary Classification
+---------------------
 
 The following figure summarizes the performance of different models on binary classification tasks.
 
-.. image:: ../resources/binclass.png
+.. image:: ../resources/Performance-Efficiency-Size-251005-bin.png
    :width: 600px
    :align: center
 
-### Multi-class Classification
+Multi-class Classification
+--------------------------
 
 The figure below shows the performance results on multi-class classification tasks.
 
-.. image:: ../resources/multiclass.png
+.. image:: ../resources/Performance-Efficiency-Size-251005-mul.png
    :width: 600px
    :align: center
 
-### Regression
+Regression
+----------
 
 The results for regression tasks are presented in the figure below.
 
-.. image:: ../resources/regression.png
+.. image:: ../resources/Performance-Efficiency-Size-251005-reg.png
    :width: 600px
    :align: center
 
-### All Tasks Combined
+All Tasks Combined
+------------------
 
 The following figure represents a combined evaluation of models across all task types (binary classification, multi-class classification, and regression).
 
-.. image:: ../resources/all_tasks.png
+.. image:: ../resources/Performance-Efficiency-Size-251005-all.png
    :width: 600px
    :align: center
 

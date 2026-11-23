@@ -21,7 +21,6 @@ Setup (Python >= 3.11):
 """
 
 import time
-from functools import lru_cache
 
 import numpy as np
 import pandas as pd
@@ -41,9 +40,8 @@ from TALENT.model.utils import probability_nll
 _DEFAULT_NUM_ESTIMATORS = {"small": 8, "medium": 8, "large": 16}
 
 
-@lru_cache(maxsize=2)
 def _load_kumo_tabular(task, size, device):
-    """Load (and cache) the pretrained model; each fit() replaces the context."""
+    """Create an estimator with its own mutable, fitted context."""
     try:
         import sdm
     except ImportError as e:

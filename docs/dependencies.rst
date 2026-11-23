@@ -31,15 +31,18 @@ Some methods in TALENT require additional dependencies for specific tasks. If yo
 
   - ``tabpfn_v2_5`` / ``tabpfn_v3``: ``pip install -U 'tabpfn>=8.0.0'``; ``tabpfn_v3_5``: ``pip install -U 'tabpfn>=9.0.0'``
   - ``tabicl_v2``: ``pip install -U 'tabicl>=2.0.0'``
-  - ``tabdpt``: ``pip install -U tabdpt``
+  - ``tabdpt_v1_3``: ``pip install "tabdpt==1.3.*"``. For ``tabdpt``: ``pip install -U tabdpt``
   - ``tabfm``: ``pip install -U "tabfm[pytorch]"``
   - ``causilo``: ``pip install -U causilo`` (PyTorch >= 2.13)
   - ``kumo_tabular``: ``pip install git+https://github.com/NVIDIA/structured-data-models.git`` (Python >= 3.11)
   - ``tabldm``: ``pip install git+https://github.com/xiaomi-research/xiaomi-tabldm.git``
   - ``exaone_tabular``: ``pip install "exaonetabular @ git+https://github.com/LGAI-Research/EXAONE-Tabular.git"`` (Python >= 3.11)
-  - ``limix_v2``: ``pip install git+https://github.com/limix-ldm-ai/LimiX.git`` (Python >= 3.12)
+  - ``limix_v2`` / ``limix_v2_1016``: ``pip install git+https://github.com/limix-ldm-ai/LimiX.git`` (Python >= 3.12)
 
-  All foundation models download their weights automatically on first use. The bundled ones (TabPFN v2, Real-TabPFN, TabICL, Mitra / Mitra-v2, LimiX / LimiX-2) fetch their checkpoints from the Hugging Face Hub when they are not bundled, which needs ``huggingface_hub`` (listed in ``requirements.txt``). TabPFN v2.5 / v3 / 3.5 require accepting the model license once (set ``TABPFN_TOKEN`` on headless machines). On machines without internet access, run each model once on a connected machine and reuse the caches (``HF_HOME`` with ``HF_HUB_OFFLINE=1``, ``TABPFN_MODEL_CACHE_DIR``, ``TALENT_CACHE_DIR``).
+  - ``inpriora``: ``pip install "scikit-learn>=1.6,<2" "inpriora @ git+https://github.com/ai-for-data/inpriora.git"``
+  - ``seldon`` / ``seldon_mini``: ``pip install "neuralk-oss>=0.3.0"``. Local inference requires access to the gated weights or a local checkpoint directory.
+
+  Check the selected method's weight source with ``TALENT.get_method_spec(name).weights``. The adapters for TabPFN v2, Real-TabPFN, TabICL, Mitra, Mitra-v2 and LimiX fetch their checkpoints from the Hugging Face Hub when they are not bundled, which needs ``huggingface_hub`` (listed in ``requirements.txt``). TabPFN v2.5 / v3 / 3.5 require accepting the model license once (set ``TABPFN_TOKEN`` on headless machines). On machines without internet access, run each model once on a connected machine and reuse the caches (``HF_HOME`` with ``HF_HUB_OFFLINE=1``, ``TABPFN_MODEL_CACHE_DIR``, ``TALENT_CACHE_DIR``).
 
 
 ==========================

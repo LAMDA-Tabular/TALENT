@@ -21,6 +21,8 @@ Setup:
 """
 
 import inspect
+from importlib.metadata import PackageNotFoundError, version
+import os
 
 from TALENT.model.methods.foundation_base import SklearnFoundationMethod, resolve_n_estimators
 
@@ -64,7 +66,17 @@ class TabDPTMethod(SklearnFoundationMethod):
                 init_kwargs[k] = general[k]
 
         model_cls = TabDPTRegressor if self.is_regression else TabDPTClassifier
-        self.model = model_cls(**self._supported_kwargs(model_cls.__init__, init_kwargs))
+        checkpoint = general.get("model_weight_path", general.get("model_path"))
+        if ("model_weight_path" in general and "model_path" in general
+                and general["model_path"] != checkpoint):
+            raise ValueError("Specify one TabDPT checkpoint using model_path or model_weight_path.")
+        if checkpoint is not None:
+            init_kwargs["model_weight_path"] = checkpoint
+        supported = self._supported_kwargs(model_cls.__init__, init_kwargs)
+        if checkpoint is not None and "model_weight_path" not in supported:
+            raise ValueError("This tabdpt backend cannot select a local checkpoint. Install tabdpt 1.3.x.")
+        self.model = model_cls(**supported)
+        self.resolved_checkpoint = os.fspath(checkpoint) if checkpoint is not None else None
 
     @staticmethod
     def _supported_kwargs(fn, kwargs):
@@ -93,3 +105,21 @@ class TabDPTMethod(SklearnFoundationMethod):
         else:
             fn = getattr(self.model, "ensemble_predict_proba", None) or self.model.predict_proba
         return fn(X, **self._supported_kwargs(fn, self._predict_kwargs))
+
+
+class TabDPTv13Method(TabDPTMethod):
+    """Use the 1.3 architecture and its matching publisher checkpoint by default."""
+
+    def construct_model(self, model_config=None, cat_indices=None):
+        try:
+            backend_version = version("tabdpt")
+        except PackageNotFoundError:
+            backend_version = "uninstalled"
+        if backend_version.split(".")[:2] != ["1", "3"]:
+            raise ImportError(
+                f"tabdpt_v1_3 requires tabdpt==1.3.* (found {backend_version}). "
+                "Install it with: pip install 'tabdpt==1.3.*'"
+            )
+        super().construct_model(model_config, cat_indices)
+        if self.resolved_checkpoint is None:
+            self.resolved_checkpoint = "Layer6/TabDPT/tabdpt1_3.safetensors"

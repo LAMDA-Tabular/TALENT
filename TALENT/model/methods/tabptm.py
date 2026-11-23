@@ -63,10 +63,9 @@ class TabPTMMethod(Method):
                 self.y = {k: v.double() for k, v in Y.items()}
             else:
                 self.y = {k: v.long() for k, v in Y.items()}
-            if torch.cuda.is_available():
-                self.centers = [torch.from_numpy(c.astype(np.float64)).cuda() for c in self.centers]    
-            else:
-                self.centers = [torch.from_numpy(c.astype(np.float64)) for c in self.centers]
+            self.centers = [
+                torch.as_tensor(c, dtype=torch.float64, device=self.args.device) for c in self.centers
+            ]
             trainset = TabPTMData(self.D, self.N, self.y, self.y_info, 'train')
             valset = TabPTMData(self.D, self.N, self.y, self.y_info, 'val')
             self.train_loader = DataLoader(dataset=trainset, batch_size=self.args.batch_size, shuffle=True, num_workers=0)        
@@ -115,7 +114,7 @@ class TabPTMMethod(Method):
                 "checkpoint is not publicly available. If you have it (e.g. from the "
                 f"TabPTM authors), place it at TALENT/{rel}."
             )
-        self.model.load_state_dict(torch.load(ckpt_path)['params'])
+        self.model.load_state_dict(torch.load(ckpt_path, map_location=self.args.device)['params'])
         if self.args.use_float:
             self.model.float()
         else:
@@ -155,7 +154,8 @@ class TabPTMMethod(Method):
     
     def predict(self, data, info, model_name):
         N, C, y = data
-        self.model.load_state_dict(torch.load(osp.join(self.args.save_path, model_name + '-{}.pth'.format(str(self.args.seed))))['params'])
+        checkpoint = osp.join(self.args.save_path, model_name + '-{}.pth'.format(str(self.args.seed)))
+        self.model.load_state_dict(torch.load(checkpoint, map_location=self.args.device)['params'])
         print('best epoch {}, best val res={:.4f}'.format(self.trlog['best_epoch'], self.trlog['best_res']))
         ## Evaluation Stage
         self.model.eval()
@@ -368,7 +368,7 @@ class TabPTMMethod(Method):
                 loss = self.criterion(pred, y.to(torch.float64).squeeze())
             else:
                 X_meta = self.get_meta_feature_allclass(X, y, is_training=True)
-                pred = self.model(X_meta, X)
+                pred = self.model(X_meta)
                 loss = self.criterion(pred, y)
 
             # X: batch x num_class x 3 x numK
@@ -402,8 +402,8 @@ class TabPTMMethod(Method):
                     test_logit.append(pred)
                     test_label.append(y.to(torch.float64))
                 else:
-                    X_meta = self.get_meta_feature_allclass(X, y, is_training=True)
-                    pred = self.model(X_meta, X)
+                    X_meta = self.get_meta_feature_allclass(X)
+                    pred = self.model(X_meta)
                     test_logit.append(pred)
                     test_label.append(y)
                 

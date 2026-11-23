@@ -5,15 +5,14 @@
     <a href='https://arxiv.org/abs/2407.04057'><img src='https://img.shields.io/badge/Arxiv-2407.04057-b31b1b.svg?logo=arXiv'></a>
     <a href='https://zhuanlan.zhihu.com/p/708721145'><img src='https://img.shields.io/badge/中文解读-b0.svg?logo=zhihu'></a>
     <a href='https://huggingface.co/datasets/LAMDA-Tabular/TALENT'><img src='https://img.shields.io/badge/%F0%9F%A4%97-TALENT-green'></a>
-  <a href=""><img src="https://img.shields.io/github/stars/qile2000/LAMDA-TALENT?color=4fb5ee"></a>
-  <a href=""><img src="https://img.shields.io/github/last-commit/qile2000/LAMDA-TALENT?color=blue"></a>
+  <a href="https://github.com/LAMDA-Tabular/TALENT/stargazers"><img src="https://img.shields.io/github/stars/LAMDA-Tabular/TALENT?color=4fb5ee" alt="GitHub stars"></a>
+  <a href="https://github.com/LAMDA-Tabular/TALENT/commits/main/"><img src="https://img.shields.io/github/last-commit/LAMDA-Tabular/TALENT?color=blue" alt="Latest commit"></a>
    <br>
     <img src="https://img.shields.io/badge/PYTORCH-2.8%2B-red?style=for-the-badge&logo=pytorch" alt="PyTorch - Version" height="21">
     <img src="https://img.shields.io/badge/PYTHON-3.10-red?style=for-the-badge&logo=python&logoColor=white" alt="Python - Version" height="21">
-    <a href="">
     <a href='https://lamda-talent.readthedocs.io/en/latest/?badge=latest'>
     <img src='https://readthedocs.org/projects/lamda-talent/badge/?version=latest' alt='Documentation Status' />
-</a><img src="https://black.readthedocs.io/en/stable/_static/license.svg"></a>
+    </a><a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
 </p>
 <div align="center">
     <p>
@@ -80,7 +79,9 @@ Welcome to **TALENT**, a benchmark with a comprehensive machine learning toolbox
 
 ## 📰 What's New
 
-- [2026-10]🌟 Add the September 2026 wave of tabular foundation models: **[TabPFN-3.5](https://github.com/PriorLabs/TabPFN)**, **[LimiX-2](https://github.com/limix-ldm-ai/LimiX)**, **[NVIDIA Kumo Tabular](https://github.com/NVIDIA/structured-data-models)**, **[Mitra-v2](https://arxiv.org/abs/2609.04540)**, **[Causilo](https://github.com/nums-ai/causilo)**, **[Xiaomi-TabLDM](https://github.com/xiaomi-research/xiaomi-tabldm)** and **[EXAONE-Tabular](https://github.com/LGAI-Research/EXAONE-Tabular)**. All foundation models now download their weights automatically and share one interface (`n_estimators`, `sample_size`); `tabpfn_v3` now pins the TabPFN-3 checkpoint (`tabpfn>=9.0` changed the package default to TabPFN-3.5).
+- [2026-11] Added **Seldon**, **Seldon-mini**, **Inpriora**, **LimiX-2-1016** and **TabDPT 1.3**, with backend checks and run provenance. Fixed binary metrics, device selection, preprocessing defaults and model-specific prediction errors.
+
+- [2026-10]🌟 Add the September 2026 wave of tabular foundation models: **[TabPFN-3.5](https://github.com/PriorLabs/TabPFN)**, **[LimiX-2](https://github.com/limix-ldm-ai/LimiX)**, **[NVIDIA Kumo Tabular](https://github.com/NVIDIA/structured-data-models)**, **[Mitra-v2](https://arxiv.org/abs/2609.04540)**, **[Causilo](https://github.com/nums-ai/causilo)**, **[Xiaomi-TabLDM](https://github.com/xiaomi-research/xiaomi-tabldm)** and **[EXAONE-Tabular](https://github.com/LGAI-Research/EXAONE-Tabular)**. The new adapters document their weight sources and supported options; `tabpfn_v3` now pins the TabPFN-3 checkpoint (`tabpfn>=9.0` changed the package default to TabPFN-3.5).
 - [2026-08]🌟 Add **[TRC](https://arxiv.org/abs/2603.16569)** (TPAMI 2026), a post-hoc representation corrector that trains and freezes an FT-Transformer backbone before learning representation re-estimation and light-space mapping.
 - [2026-07]🌟 Add **[TabFM](https://github.com/google-research/tabfm)** (Google Research, zero-shot tabular foundation model) as an optional method via `pip install -U "tabfm[pytorch]"`.
 - [2026-06]🌟 Add **[TabPFN v2.5](https://arxiv.org/abs/2511.08667)** (PriorLabs, Nov 2025) and **[TabDPT](https://github.com/layer6ai-labs/TabDPT-inference)** (Layer 6 AI, ICL + retrieval). TALENT now ships the full TabPFN family (v1, v2, v2.5, v3) plus TabDPT alongside the other tabular foundation models.
@@ -125,7 +126,7 @@ TALENT integrates an extensive array of 30+ deep learning architectures for tabu
 5. **[TabCaps](https://openreview.net/pdf?id=OgbtSLESnI)**: A capsule network that encapsulates all feature values of a record into vectorial features.
 6. **[DCNv2](https://arxiv.org/abs/2008.13535)**: Consists of an MLP-like module combined with a feature crossing module, which includes both linear layers and multiplications.
 7. **[NODE](https://arxiv.org/abs/1909.06312)**: A tree-mimic method that generalizes oblivious decision trees, combining gradient-based optimization with hierarchical representation learning.
-8. **[GrowNet](https://arxiv.org/abs/2002.07971)**: A gradient boosting framework that uses shallow neural networks as weak learners.
+8. **[GrowNet](https://arxiv.org/abs/2002.07971)**: A gradient boosting framework that uses shallow neural networks as weak learners. In the historical classification training code, a broadcasting error pairs scores with labels from other rows in the same batch. This affects the interpretation of classification results. Regression uses a separate training objective.
 9. **[TabNet](https://arxiv.org/abs/1908.07442)**: A tree-mimic method using sequential attention for feature selection, offering interpretability and self-supervised learning capabilities.
 10. **[TabR](https://arxiv.org/abs/2307.14338)**: A deep learning model that integrates a KNN component to enhance tabular data predictions through an efficient attention-like mechanism.
 11. **[ModernNCA](https://arxiv.org/abs/2407.03257)**: A deep tabular model inspired by traditional Neighbor Component Analysis, which makes predictions based on the relationships with neighbors in a learned embedding space.
@@ -169,7 +170,7 @@ TALENT integrates an extensive array of 30+ deep learning architectures for tabu
 49. **[Mitra-v2](https://arxiv.org/abs/2609.04540)**: The second-generation Mitra (AutoGluon, Sep 2026) for classification and regression (1000-bin distributional head), run zero-shot through TALENT's Mitra code.
 50. **[Causilo](https://github.com/nums-ai/causilo)**: A tabular foundation model from Nums AI (Sep 2026) for classification and regression. Requires `pip install -U causilo` (PyTorch >= 2.13); the weights use the non-commercial Causilo License.
 51. **[Xiaomi-TabLDM](https://github.com/xiaomi-research/xiaomi-tabldm)**: Xiaomi's tabular foundation model (Sep 2026) for classification and regression. Requires `pip install git+https://github.com/xiaomi-research/xiaomi-tabldm.git`; check the model card for the weights license.
-52. **[EXAONE-Tabular](https://github.com/LGAI-Research/EXAONE-Tabular)**: LG AI Research's tabular foundation model (2026) for classification and regression. Requires Python >= 3.11 and `pip install "exaonetabular @ git+https://github.com/LGAI-Research/EXAONE-Tabular.git"`; the weights are for research and education only.
+52. **[EXAONE-Tabular](https://github.com/LGAI-Research/EXAONE-Tabular)**: LG AI Research's tabular foundation model (2026) for classification and regression. Requires Python >= 3.11 and `pip install "exaonetabular @ git+https://github.com/LGAI-Research/EXAONE-Tabular.git"`; the weights are for research and education only. The released regressor can fail the publisher’s quantile-grid check on Windows with CPU or CUDA. Classification with the public weights was verified on CPU.
 53. **[LimiX-2](https://github.com/limix-ldm-ai/LimiX)**: The 400M-parameter successor of LimiX (StableAI, Sep 2026) for classification (2-10 classes) and regression. Requires Python >= 3.12 and `pip install git+https://github.com/limix-ldm-ai/LimiX.git`; the weights use the StableAI LimiX Non-Commercial License.
 
 
@@ -186,7 +187,7 @@ Install with the newest version through GitHub:
 $ pip install git+https://github.com/LAMDA-Tabular/TALENT.git@main --upgrade
 ```
 
-Try a demo `train_model_deep.py` :
+From a source checkout, the CLI scripts live in `test/` and sample data in `example_datasets/`. The deep-learning launcher follows this workflow:
 
 ```python
 from tqdm import tqdm
@@ -227,14 +228,14 @@ if __name__ == '__main__':
 
 
 ```bash
-python train_model_deep.py --model_type MODEL_NAME
+python test/train_model_deep.py --model_type mlp --dataset bank --dataset_path example_datasets --seed_num 1 --max_epoch 1
 ```
 
 For TRC, use integer-encoded categorical features as required by its
 FT-Transformer backbone:
 
 ```bash
-python train_model_deep.py --model_type trc --cat_policy indices
+python test/train_model_deep.py --model_type trc --cat_policy indices --dataset bank --dataset_path example_datasets --seed_num 1
 ```
 
 TRC first trains the backbone for at most `--max_epoch` epochs, freezes it,
@@ -251,10 +252,10 @@ TALENT also exposes a library-style API alongside the CLI scripts, so you can ca
 import TALENT
 from TALENT.model.lib.data import get_dataset
 
-train_val, test, info = get_dataset("your_dataset", "./data")
+train_val, test, info = get_dataset("bank", "./example_datasets")
 
 # Single-seed run
-result = TALENT.run("tabpfn_v3", train_val, test, info)
+result = TALENT.run("LogReg", train_val, test, info)
 print(dict(zip(result.metric_names, result.metrics)))
 print("Fit time:", result.fit_time, "Predict time:", result.predict_time)
 
@@ -263,6 +264,34 @@ result = TALENT.run("catboost", train_val, test, info, tune=True, n_trials=50, s
 print("Mean metrics:", dict(zip(result.metric_names, result.metrics_mean)))
 print("Std metrics:",  dict(zip(result.metric_names, result.metrics_std)))
 ```
+
+#### Selecting a foundation model release
+
+Use the method ID in `TALENT.run()`, `run_from_dataset()` or the deep-method CLI. Each entry below supports classification and regression. Install only the backend you intend to use.
+
+| Method ID | Optional backend | Weights and configuration |
+|---|---|---|
+| `limix_v2_1016` | Python 3.12+, [publisher's LimiX package](https://github.com/limix-ldm-ai/LimiX) | Selects [LimiX-2-1016.ckpt](https://huggingface.co/stable-ai/LimiX-2-1016) and the corresponding inference recipe. `limix_v2` selects the original release. |
+| `tabdpt_v1_3` | `pip install "tabdpt==1.3.*"` | Uses [Layer 6's 1.3 weights](https://huggingface.co/Layer6/TabDPT). The existing `tabdpt` ID supports other backend versions. |
+| `inpriora` | `pip install "scikit-learn>=1.6,<2" "inpriora @ git+https://github.com/ai-for-data/inpriora.git"` | Loads the [classifier or regressor](https://huggingface.co/ai-for-data/inpriora). For offline use, supply the task-specific local directory. |
+| `seldon`, `seldon_mini` | `pip install "neuralk-oss>=0.3.0"` | Local SDK inference with [Seldon](https://huggingface.co/Neuralk-AI/seldon) or [Seldon-mini](https://huggingface.co/Neuralk-AI/seldon-mini). Obtain access to the gated weights or supply a local model directory. |
+
+All five entries accept `config["general"]["model_path"]`. LimiX and TabDPT expect a checkpoint file. Seldon and Inpriora expect a directory. TabDPT also accepts its native `model_weight_path` spelling.
+
+The LimiX 2.0 backend imports Triton even during CPU inference. On Windows, the local CPU checks used `triton-windows` for this dependency.
+
+```python
+spec = TALENT.get_method_spec("tabdpt_v1_3")
+print(spec.preflight(checkpoint_path="/models/tabdpt1_3.safetensors"))
+
+result = TALENT.run(
+    "tabdpt_v1_3", train_val, test, info,
+    config={"general": {"model_path": "/models/tabdpt1_3.safetensors", "n_estimators": 2}},
+)
+print(result.provenance)
+```
+
+Preflight reads registry and installed-package metadata and checks the existence of an optional local path. A real prediction exercises the backend and weights. `result.provenance` identifies the method, configured device, declared backend distribution, detected version and checkpoint when the adapter can identify it. Unknown values are `None`.
 
 #### Choosing the HPO objective metric
 
@@ -303,7 +332,7 @@ for s in TALENT.list_methods(
     print(s.name)
 ```
 
-Both the CLI scripts and the Python API are backed by the same `MethodSpec` registry, so adding a new method requires only a single registry entry (see `TALENT/model/method_registry.py`).
+Both the CLI scripts and the Python API are backed by the same `MethodSpec` registry, which dispatches to the registered adapter. New adapters also need default and search-space configurations.
 
 The registry is also the single source of truth for foundation-model training-row caps (`train_row_limit`): TabPFN 1k, TabPFN v2 / Real-TabPFN / Mitra / Mitra-v2 10k, TabPFN v2.5 50k, TabICL 500k, TabPFN v3 / TabPFN-3.5 / TabICL v2 1M; TabDPT, TabFM, LimiX, LimiX-2, Kumo Tabular, Causilo, Xiaomi-TabLDM and EXAONE-Tabular have no registry cap. The cap is applied automatically when fitting; setting `config['general']['sample_size']` overrides it for a single run. Likewise, `config['general']['n_estimators']` sets the ensemble size of every foundation model that has one.
 
@@ -312,6 +341,7 @@ The registry is also the single source of truth for foundation-model training-ro
 - TabPFN v2.5 / v3 / 3.5: accept the model license once; on headless machines, accept it on the [Prior Labs platform](https://docs.priorlabs.ai/models/accessing-model-weights) and set `TABPFN_TOKEN` (and `TABPFN_NO_BROWSER=1`).
 - Machines without internet access (e.g. cluster compute nodes): run each model once on a connected machine, then reuse the caches (`HF_HOME` with `HF_HUB_OFFLINE=1`, `TABPFN_MODEL_CACHE_DIR`, and `TALENT_CACHE_DIR` for HyperFast).
 - TabPTM: only the regression checkpoint is distributed; the classification checkpoint is not publicly available.
+- TabPTM's Bray–Curtis distance can be undefined for opposing standardized values. Check predictions for non-finite values when evaluating such data.
 
 
 
@@ -323,21 +353,22 @@ Clone this GitHub repository:
 
 ```bash
 git clone https://github.com/LAMDA-Tabular/TALENT
-cd TALENT/test
+cd TALENT
+python -m pip install -e .
 ```
 
 ### 🔑 Run experiment
 
-1. Edit the `configs/default/[MODEL_NAME].json`  and `config/opt_space/[MODEL_NAME].json` for global settings and hyperparameters.
+1. From the checkout root, edit `TALENT/configs/default/[MODEL_NAME].json` and `TALENT/configs/opt_space/[MODEL_NAME].json` for global settings and hyperparameters.
 
 2. Run:
 
     ```bash
-    python train_model_deep.py --model_type MODEL_NAME
+    python test/train_model_deep.py --model_type mlp --dataset bank --dataset_path example_datasets --seed_num 1 --max_epoch 1
     ```
     for deep methods, or:
     ```bash
-    python train_model_classical.py --model_type MODEL_NAME
+    python test/train_model_classical.py --model_type LogReg --dataset bank --dataset_path example_datasets --seed_num 1
     ```
     for classical methods.	
 
@@ -345,12 +376,12 @@ cd TALENT/test
 
 For methods like the MLP class that only need to design the model, you only need to:
 
-- Add the model class in `model/models`.
-- Inherit from `model/methods/base.py` and override the `construct_model()` method in the new class.
-- Register the method in the unified registry `model/method_registry.py` by appending a `MethodSpec(...)` entry. The CLI argparse `choices` and `get_method()` are both derived from this registry, so no other dispatcher edits are needed.
-- Add the parameter settings for the new method in `configs/default/[MODEL_NAME].json` and `configs/opt_space/[MODEL_NAME].json`.
+- Add the model class in `TALENT/model/models`.
+- Inherit from `TALENT/model/methods/base.py` and override the `construct_model()` method in the new class.
+- Register the method in the unified registry `TALENT/model/method_registry.py` by appending a `MethodSpec(...)` entry. The CLI argparse `choices` and `get_method()` are both derived from this registry, so no other dispatcher edits are needed.
+- Add the parameter settings for the new method in `TALENT/configs/default/[MODEL_NAME].json` and `TALENT/configs/opt_space/[MODEL_NAME].json`.
 
-For other methods that require changing the training process, partially override functions based on `model/methods/base.py`. For details, refer to the implementation of other methods in `model/methods/`.
+For other methods that require changing the training process, partially override functions based on `TALENT/model/methods/base.py`. For details, refer to the implementation of other methods in `TALENT/model/methods/`.
 
 See our [Contribution Guide](CONTRIBUTING.md) for more details.
 

@@ -41,6 +41,9 @@ class CausiloMethod(SklearnFoundationMethod):
         for k in ('use_kv_cache', 'retain_preprocessing'):
             if k in general:
                 kwargs[k] = general[k]
+        checkpoint = general.get('model_path') or general.get('checkpoint_path')
+        if checkpoint is not None:
+            kwargs['checkpoint_path'] = checkpoint
         model_cls = CausiloRegressor if self.is_regression else CausiloClassifier
         self.model = model_cls(**kwargs)
 

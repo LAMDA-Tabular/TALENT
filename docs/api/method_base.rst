@@ -9,23 +9,8 @@ Method Base
 Utility Functions
 -----------------
 
-.. function:: check_softmax(logits)
+.. autofunction:: TALENT.model.utils.check_softmax
    :noindex:
-
-   Check if the logits are already probabilities, and if not, convert them to probabilities.
-   
-   **Parameters:**
-   
-   * **logits** (*np.ndarray*) -- Array of shape (N, C) with logits
-   
-   **Returns:**
-   
-   * **np.ndarray** -- Array of shape (N, C) with probabilities
-   
-   **Note:**
-   
-   This function checks if the input values are already in the [0, 1] range and sum to 1.
-   If not, it applies softmax transformation with numerical stability (subtracting max before exp).
 
 Core Method Class
 -----------------
@@ -33,10 +18,10 @@ Core Method Class
 .. class:: Method
    :noindex:
 
-   Abstract base class for all machine learning methods in TALENT.
+   Base class for TALENT's deep method adapters.
    
    This class provides a unified interface for training, validation, and prediction
-   across all deep learning and classical machine learning models in TALENT.
+   for deep method adapters. Classical methods have their own base class.
    
    **Attributes:**
    

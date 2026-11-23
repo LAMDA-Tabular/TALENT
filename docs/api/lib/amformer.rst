@@ -1,5 +1,5 @@
 **AMFormer**
-===========
+============
 
 A token-based method which improves the transformer architecture for tabular data by incorporating parallel addition and multiplication attention mechanisms, utilizing prompt tokens to constrain feature interactions.
 

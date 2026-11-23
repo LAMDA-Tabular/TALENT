@@ -25,7 +25,7 @@ class classical_methods(object, metaclass=abc.ABCMeta):
         print(args.config)
         self.is_regression = is_regression
         self.D = None
-        self.args.device = get_device()
+        self.args.device = get_device(getattr(args, "device", None))
         self.trlog = {}
         assert args.cat_policy != 'indices'
 
@@ -147,7 +147,7 @@ class classical_methods(object, metaclass=abc.ABCMeta):
                 rmse *= y_info['std']
             return (mae, r2, rmse), ("MAE", "R2", "RMSE")
         elif self.is_binclass:
-            predictions = check_softmax(predictions)
+            predictions = check_softmax(predictions, model_type=getattr(self.args, "model_type", None))
             if threshold is not None:
                 hard_preds = (predictions[:, 1] >= threshold).astype(int)
             else:

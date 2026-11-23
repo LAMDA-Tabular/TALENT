@@ -30,9 +30,10 @@ class GrowNetMethod(Method):
         from TALENT.model.models.grownet import DynamicNet
         self.model = DynamicNet(
             categories = self.categories,
+            device=self.args.device,
             **self.ensemble_model_config
         )
-        self.model.to_cuda()
+        self.model.to_device(self.args.device)
 
     def fit(self, data, info, train = True, config = None):
         N,C,y = data
@@ -72,7 +73,7 @@ class GrowNetMethod(Method):
                 weight_decay=weight_decay
             )
             self.model.to_train()
-            self.model.to_cuda()
+            self.model.to_device(self.args.device)
             if not self.args.use_float:
                 self.model.to_double()
                 m.double()
@@ -85,21 +86,21 @@ class GrowNetMethod(Method):
                     else:
                         X_num, X_cat = X, None
                     middle_feat, out = self.model.forward(X_num, X_cat)
-                    out = torch.as_tensor(out, dtype=torch.float64).cuda().view(-1, 1)
+                    out = torch.as_tensor(out, dtype=torch.float64, device=self.args.device).view(-1, 1)
                     if self.is_regression:
                         # y is (B,) while out is (B,1): without the view the
                         # subtraction broadcasts to (B,B) and the MSE below is
                         # computed over wrong sample pairs.
                         grad_direction = -(out - y.view(-1, 1))
                         _, out = m(self.model.embed_input(X_num, X_cat), middle_feat)
-                        out = torch.as_tensor(out, dtype=torch.float64).cuda().view(-1, 1)
+                        out = torch.as_tensor(out, dtype=torch.float64, device=self.args.device).view(-1, 1)
                         loss = self.loss_f1(self.model.boost_rate * out, grad_direction)
                     else:
                         h = 1 / ((1 + torch.exp(y * out)) * (1 + torch.exp(-y * out)))
                         grad_direction = y * (1.0 + torch.exp(-y * out))
                         out = torch.as_tensor(out)
                         _, out = m(self.model.embed_input(X_num, X_cat), middle_feat)
-                        out = torch.as_tensor(out, dtype=torch.float64).cuda().view(-1, 1)
+                        out = torch.as_tensor(out, dtype=torch.float64, device=self.args.device).view(-1, 1)
                         loss = self.loss_f1(self.model.boost_rate * out, grad_direction) # T
                         loss = loss * h
                         loss = loss.mean()
@@ -127,7 +128,7 @@ class GrowNetMethod(Method):
                         else:
                             X_num, X_cat = X, None
                         _, out = self.model.forward_grad(X_num, X_cat)
-                        out = torch.as_tensor(out, dtype=torch.float64).cuda()
+                        out = torch.as_tensor(out, dtype=torch.float64, device=self.args.device)
                         loss = self.loss_f2(out, y)
                         self.optimizer.zero_grad()
                         loss.backward()
@@ -146,7 +147,7 @@ class GrowNetMethod(Method):
         
         ## Evaluation Stage
         self.model.to_eval()
-        self.model.to_cuda()
+        self.model.to_device(self.args.device)
         if not self.args.use_float:
             self.model.to_double()
         test_logit, test_label = [], []
@@ -197,9 +198,10 @@ class GrowNetMethod(Method):
         self.model = DynamicNet.from_file(
             self.args.save_path + "/final-{}.pt".format(str(self.args.seed)),
             lambda stage: MLP_2HL.get_model(stage, argparse.Namespace(**self.sub_model_config)),
+            device=self.args.device,
         )
         self.model.to_eval()
-        self.model.to_cuda()
+        self.model.to_device(self.args.device)
         if not self.args.use_float:
             self.model.to_double()
         self.data_format(False, N, C, y)

@@ -2,7 +2,19 @@
 Core Components
 ====================================
 
-This section contains the core infrastructure components of TALENT that provide the foundation for all TALENT functionality. These components work together to provide a consistent and robust framework for tabular machine learning.
+Python runner
+-------------
+
+Use ``TALENT.run_from_dataset`` to load a named dataset from disk or
+``TALENT.run`` to supply the train/validation and test splits directly.
+Both return a ``RunResult``. Its ``predictions`` field retains each
+method's native output. For probabilistic classifiers, use ``predict_proba``
+for an ``(n_rows, n_classes)`` array and ``predict_labels`` for encoded class
+indices. For regression, use ``predictions`` in the original target units.
+See :doc:`../tutorials` for a runnable example.
+
+Method infrastructure
+---------------------
 
 The core components are organized into three main categories:
 

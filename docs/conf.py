@@ -11,18 +11,18 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 import os
 import sys
-sys.path.insert(0, os.path.abspath('.'))
+from importlib.util import find_spec
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 
 # -- Project information -----------------------------------------------------
 
 project = "LAMDA-TALENT"
-copyright = "2024, Read the Docs core team"
+copyright = "2024, Siyang Liu, Haorun Cai, Qile Zhou, Han-Jia Ye"
 author = "Siyang Liu"
 
 
 # -- General configuration ---------------------------------------------------
-# -- General configuration
 
 extensions = [
     "sphinx.ext.duration",
@@ -48,6 +48,7 @@ autodoc_mock_imports = [
     'category_encoders', 'tqdm', 'matplotlib', 'seaborn', 'delu',
     'einops', 'qhoptim', 'statsmodels', 'patsy'
 ]
+autodoc_mock_imports = [name for name in autodoc_mock_imports if find_spec(name) is None]
 
 # Continue on import errors
 autodoc_inherit_docstrings = True
@@ -57,8 +58,10 @@ intersphinx_mapping = {
     "rtd": ("https://docs.readthedocs.io/en/stable/", None),
     "python": ("https://docs.python.org/3/", None),
     "sphinx": ("https://www.sphinx-doc.org/en/master/", None),
+    "sklearn": ("https://scikit-learn.org/stable/", None),
+    "torch": ("https://docs.pytorch.org/docs/stable/", None),
 }
-intersphinx_disabled_domains = ["std"]
+intersphinx_disabled_domains = []
 
 templates_path = ["_templates"]
 
@@ -80,4 +83,4 @@ html_theme = "sphinx_rtd_theme"
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ["_static"]
+html_static_path = []

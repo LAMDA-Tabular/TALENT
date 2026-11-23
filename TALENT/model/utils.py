@@ -12,14 +12,25 @@ import os.path as osp
 THIS_PATH = os.path.dirname(__file__)
 
 
-def check_softmax(logits):
+def check_softmax(logits, *, model_type=None):
     """
-    Check if the logits are already probabilities, and if not, convert them to probabilities.
+    Convert classification scores to a probability matrix for metric calculation.
 
-    :param logits: np.ndarray of shape (N, C) with logits
+    :param logits: An (N, C) matrix, or one score per row for a binary task.
+        Matrices with probability rows are kept as supplied. For binary vectors
+        and single-column matrices, the registered output type determines
+        whether the score is a probability or a logit.
+    :param model_type: Optional method ID. Without an ID, binary scores are logits.
     :return: np.ndarray of shape (N, C) with probabilities
     """
-    # Check if any values are outside the [0, 1] range and Ensure they sum to 1
+    if logits.ndim == 1 or (logits.ndim == 2 and logits.shape[1] == 1):
+        from TALENT.model.lib.evaluation import standardize_predict_proba
+        from TALENT.model.method_registry import METHOD_REGISTRY, OutputType
+
+        spec = METHOD_REGISTRY.get(model_type)
+        output_type = spec.output_type if spec is not None else OutputType.LOGITS
+        return standardize_predict_proba(logits, output_type, is_regression=False)
+
     if np.any((logits < 0) | (logits > 1)) or (not np.allclose(logits.sum(axis=-1), 1, atol=1e-5)):
         exps = np.exp(logits - np.max(logits, axis=1, keepdims=True))  # stabilize by subtracting max
         return exps / np.sum(exps, axis=1, keepdims=True)
@@ -35,14 +46,18 @@ def probability_nll(probabilities, labels):
     probabilities: ``F.cross_entropy`` expects logits and would apply a second
     softmax on top of the probabilities.
 
-    :param probabilities: (N, K) array or tensor of class probabilities
+    :param probabilities: An (N, K) probability matrix or, for binary
+        classification, one positive-class probability per row.
     :param labels: (N,) integer class labels
     :return: float
     """
     if hasattr(probabilities, 'detach'):
         probabilities = probabilities.detach().cpu().numpy()
     p = torch.as_tensor(np.asarray(probabilities, dtype=np.float64))
-    y = torch.as_tensor(np.asarray(labels), dtype=torch.long).reshape(-1)
+    if p.ndim == 1 or (p.ndim == 2 and p.shape[1] == 1):
+        positive = p.reshape(-1)
+        p = torch.stack((1 - positive, positive), dim=1)
+    y = torch.as_tensor(labels, dtype=torch.long, device="cpu").reshape(-1)
     return torch.nn.functional.nll_loss(torch.log(p.clamp_min(1e-12)), y).item()
 
 
@@ -164,7 +179,9 @@ def set_seeds(base_seed: int, one_cuda_seed: bool = False) -> None:
             default_generator.manual_seed(cuda_seed + i)
 
 
-def get_device() -> torch.device:
+def get_device(device=None) -> torch.device:
+    if device is not None:
+        return torch.device(device)
     return torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
@@ -292,6 +309,22 @@ def merge_sampled_parameters(config, sampled_parameters):
             config[k] = v
 
 
+def _apply_cli_preprocessing_defaults(args, defaults):
+    """Choose valid defaults for the selected method and validate explicit CLI flags."""
+    from TALENT.model.method_registry import get_method_spec
+
+    spec = get_method_spec(args.model_type)
+    if args.cat_policy is None:
+        args.cat_policy = defaults['cat_policy']
+        if spec.cat_policy is not None and args.cat_policy not in spec.cat_policy:
+            args.cat_policy = spec.cat_policy[0]
+    if args.normalization is None:
+        args.normalization = spec.normalization or defaults['normalization']
+    if args.num_policy is None:
+        args.num_policy = spec.num_policy or defaults['num_policy']
+    spec.validate_args(args)
+
+
 def get_classical_args():
     """
     Get the arguments for classical models.
@@ -316,15 +349,15 @@ def get_classical_args():
                         choices=classical_method_names())
 
     # optimization parameters 
-    parser.add_argument('--normalization', type=str, default=default_args['normalization'],
+    parser.add_argument('--normalization', type=str,
                         choices=['none', 'standard', 'minmax', 'quantile', 'maxabs', 'power', 'robust'])
     parser.add_argument('--num_nan_policy', type=str, default=default_args['num_nan_policy'],
                         choices=['mean', 'median'])
     parser.add_argument('--cat_nan_policy', type=str, default=default_args['cat_nan_policy'],
                         choices=['new', 'most_frequent'])
-    parser.add_argument('--cat_policy', type=str, default=default_args['cat_policy'],
+    parser.add_argument('--cat_policy', type=str,
                         choices=['indices', 'ordinal', 'ohe', 'binary', 'hash', 'loo', 'target', 'catboost'])
-    parser.add_argument('--num_policy', type=str, default=default_args['num_policy'],
+    parser.add_argument('--num_policy', type=str,
                         choices=['none', 'Q_PLE', 'T_PLE', 'Q_Unary', 'T_Unary', 'Q_bins', 'T_bins', 'Q_Johnson',
                                  'T_Johnson'])
     parser.add_argument('--n_bins', type=int, default=default_args['n_bins'])
@@ -343,10 +376,9 @@ def get_classical_args():
     parser.add_argument('--model_path', type=str, default=default_args['model_path'])
     parser.add_argument('--evaluate_option', type=str, default=default_args['evaluate_option'])
     args = parser.parse_args()
-    # Fail fast with a readable message (instead of a bare assert inside the
-    # method) when the preprocessing flags violate the method's requirements.
-    from TALENT.model.method_registry import get_method_spec
-    get_method_spec(args.model_type).validate_args(args)
+    if args.seed_num < 1:
+        parser.error("--seed_num must be a positive integer")
+    _apply_cli_preprocessing_defaults(args, default_args)
 
     set_gpu(args.gpu)
     save_path1 = '-'.join([args.dataset, args.model_type])
@@ -408,16 +440,16 @@ def get_deep_args():
     # optimization parameters
     parser.add_argument('--max_epoch', type=int, default=default_args['max_epoch'])
     parser.add_argument('--batch_size', type=int, default=default_args['batch_size'])
-    parser.add_argument('--normalization', type=str, default=default_args['normalization'],
+    parser.add_argument('--normalization', type=str,
                         choices=['none', 'standard', 'minmax', 'quantile', 'maxabs', 'power', 'robust', 'MncaPFN'])
     parser.add_argument('--num_nan_policy', type=str, default=default_args['num_nan_policy'],
                         choices=['mean', 'median'])
     parser.add_argument('--cat_nan_policy', type=str, default=default_args['cat_nan_policy'],
                         choices=['new', 'most_frequent'])
-    parser.add_argument('--cat_policy', type=str, default=default_args['cat_policy'],
+    parser.add_argument('--cat_policy', type=str,
                         choices=['indices', 'ordinal', 'ohe', 'binary', 'hash', 'loo', 'target', 'catboost',
                                  'tabr_ohe'])
-    parser.add_argument('--num_policy', type=str, default=default_args['num_policy'],
+    parser.add_argument('--num_policy', type=str,
                         choices=['none', 'Q_PLE', 'T_PLE', 'Q_Unary', 'T_Unary', 'Q_bins', 'T_bins', 'Q_Johnson',
                                  'T_Johnson'])
     parser.add_argument('--n_bins', type=int, default=default_args['n_bins'])
@@ -440,10 +472,9 @@ def get_deep_args():
     parser.add_argument('--use_float', action='store_true', default=False,
                         help='Use float32 instead of float64 for model and data (default: False)')
     args = parser.parse_args()
-    # Fail fast with a readable message (instead of a bare assert inside the
-    # method) when the preprocessing flags violate the method's requirements.
-    from TALENT.model.method_registry import get_method_spec
-    get_method_spec(args.model_type).validate_args(args)
+    if args.seed_num < 1:
+        parser.error("--seed_num must be a positive integer")
+    _apply_cli_preprocessing_defaults(args, default_args)
 
     set_gpu(args.gpu)
     save_path1 = '-'.join([args.dataset, args.model_type])

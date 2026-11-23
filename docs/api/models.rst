@@ -723,10 +723,10 @@ GrowNet (Gradient Boosting with Neural Networks)
       where :math:`h_m` is the m-th weak learner and :math:`\gamma_m` is the boosting rate.
 
 Distance-Based Models
-====================
+=====================
 
 Modern Neighborhood Component Analysis (ModernNCA)
------------------------------------------
+--------------------------------------------------
 
 .. automodule:: TALENT.model.models.modernNCA
    :members:
@@ -946,7 +946,7 @@ ProtoGate (Prototype-Based Gating)
       Generate gating weights for feature selection.
 
 Retrieval-Based Models
-=====================
+======================
 
 TabR (Tabular Retrieval)
 ------------------------
@@ -996,7 +996,7 @@ TabR (Tabular Retrieval)
       4. **Prediction Generation:** Combine retrieval and learned representations
 
 Foundation Models
-================
+=================
 
 TabPFN (Tabular Prior-Fitting Networks)
 ---------------------------------------
@@ -1046,10 +1046,10 @@ TabPFN (Tabular Prior-Fitting Networks)
       3. **Prediction Generation:** Generate predictions without fine-tuning
 
 Regularization Methods
-=====================
+======================
 
 TANGOS Regularization
---------------------
+---------------------
 
 .. automodule:: TALENT.model.models.tangos
    :members:
@@ -1162,7 +1162,7 @@ Activation Functions Reference
 where :math:`\Delta^{K-1}` is the probability simplex.
 
 Model Usage Examples
-===================
+====================
 
 **Basic MLP Usage:**
 
@@ -1321,7 +1321,7 @@ Model Usage Examples
    predictions = model.predict_proba(X_test)
 
 Model Selection Guidelines
-=========================
+==========================
 
 **For Beginners:**
 - **MLP:** Simple, fast, good baseline

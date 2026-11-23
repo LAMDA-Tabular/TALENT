@@ -19,7 +19,7 @@ class CatBoostMethod(classical_methods):
         print(args.config)
         self.is_regression = is_regression
         self.D = None
-        self.args.device = get_device()
+        self.args.device = get_device(getattr(args, "device", None))
         self.trlog = {}
         assert(args.cat_policy == 'indices')
 
@@ -50,7 +50,7 @@ class CatBoostMethod(classical_methods):
             X_val = np.concatenate([self.N['val'], self.C['val'].astype(str)], axis=1)
         # Only request GPU training when CUDA is actually available; otherwise
         # CatBoost raises a hard error on machines with no compatible GPU.
-        if self.args.gpu != 'cpu' and self.args.gpu != '' and torch.cuda.is_available():
+        if self.args.device.type == 'cuda' and self.args.gpu not in ('cpu', '') and torch.cuda.is_available():
             task_type = 'GPU'
         else:
             task_type = 'CPU'

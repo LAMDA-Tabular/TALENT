@@ -1,5 +1,5 @@
 **TabR**
-=======
+========
 
 A deep learning model that integrates a KNN component to enhance tabular data predictions through an efficient attention-like mechanism.
 

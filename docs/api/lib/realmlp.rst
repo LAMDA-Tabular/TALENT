@@ -1,5 +1,5 @@
 **RealMLP**
-==========
+===========
 
 An improved multilayer perceptron (MLP).
 
@@ -99,10 +99,10 @@ Context manager for printing execution time.
 
 **Usage:**
 
-```python
-with TimePrinter("Operation"):
-    # code to time
-```
+.. code-block:: python
+
+    with TimePrinter("Training"):
+        model.fit(X, y)
 
 
 .. code-block:: python

@@ -7,7 +7,8 @@ from TALENT.model.lib.data import (
     Dataset,
     data_nan_process,
     data_enc_process,
-    data_label_process
+    data_label_process,
+    mse_safe_broadcast,
 )
 from TALENT.model.method_registry import weights_download_hint
 from TALENT.model.utils import probability_nll
@@ -57,6 +58,11 @@ class LimiXMethod(Method):
         """Bundled checkpoint if present, otherwise download it from the Hub."""
         import os
         from TALENT.model.method_registry import resolve_bundled_path, download_from_hf_hub
+        configured = (self.args.config.get("general") or {}).get("model_path")
+        if configured is not None:
+            if not os.path.isfile(configured):
+                raise FileNotFoundError(f"Configured LimiX checkpoint does not exist: {configured}")
+            return os.fspath(configured)
         # Resolve the bundled checkpoint via importlib.resources so the package
         # works from any CWD; fall back to the legacy relative path so
         # behaviour from the repo root is preserved.
@@ -141,7 +147,7 @@ class LimiXMethod(Method):
         test_label_tensor = torch.tensor(test_label, dtype=torch.float32 if self.is_regression else torch.long)
 
         if self.is_regression:
-            vl = self.criterion(test_logit_tensor, test_label_tensor).item()
+            vl = mse_safe_broadcast(test_logit_tensor, test_label_tensor).item()
         else:
             # LimiX returns class probabilities, so the loss is their NLL.
             vl = probability_nll(test_logit_tensor, test_label_tensor)

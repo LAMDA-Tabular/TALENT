@@ -12,7 +12,7 @@ Quick examples
 >>> import TALENT
 >>> from TALENT.model.lib.data import get_dataset
 >>>
->>> train_val, test, info = get_dataset("housing", "./data")
+>>> train_val, test, info = get_dataset("bank", "./example_datasets")
 >>> result = TALENT.run("catboost", train_val, test, info)
 >>> result.metrics, result.metric_names
 >>> result.predictions  # in original target scale for regression
@@ -44,6 +44,8 @@ import os.path as osp
 import json
 import time
 import tempfile
+from copy import deepcopy
+from numbers import Integral
 import warnings
 from dataclasses import dataclass, field
 from types import SimpleNamespace
@@ -117,6 +119,9 @@ class RunResult:
     method_type: str = ""
     config: Dict[str, Any] = field(default_factory=dict)
     save_path: Optional[str] = None
+
+    # Runtime identity for the final seed; to_dict() keeps its historical schema.
+    provenance: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         """Return a JSON-safe summary (predictions excluded)."""
@@ -217,6 +222,11 @@ def _try_load_method_config(model_type: str) -> Tuple[Dict[str, Any], Dict[str, 
     return default_cfg, opt_cfg
 
 
+def _validate_seed_num(count):
+    if not isinstance(count, Integral) or isinstance(count, bool) or count < 1:
+        raise ValueError("seed_num must be a positive integer")
+
+
 def build_args(
     model_type: str,
     *,
@@ -281,6 +291,8 @@ def build_args(
         if spec.num_policy is not None:
             base["num_policy"] = spec.num_policy
 
+    _validate_seed_num(base["seed_num"])
+
     # Resolve save_path
     if save_path is None:
         save_path = tempfile.mkdtemp(prefix=f"talent-{model_type}-")
@@ -299,6 +311,9 @@ def build_args(
         else:
             # Minimal fallback so methods that read training/lr etc. still work
             config = {"model": {}, "training": {}, "general": {}}
+    else:
+        # Propagation of preprocessing options and tuning both update nested keys.
+        config = deepcopy(config)
     base["config"] = config
 
     # n_bins propagation matches the CLI behaviour
@@ -372,7 +387,7 @@ def run(
     config : dict, optional
         Method-specific config. If None, the packaged default is used.
     args : SimpleNamespace, optional
-        Pre-built args. If supplied, its fields are used as defaults; explicit
+        Arguments built for this method. Its fields are used as defaults; explicit
         per-call kwargs below override matching fields. Pass the output of
         :func:`build_args` here when you want fine control.
     seed : int, optional
@@ -394,7 +409,7 @@ def run(
         If True, attach the fitted method object to ``result.method``.
         Adds RAM cost, so off by default.
     verbose : bool, default False
-        Forwarded to the method when supported.
+        Print the method and seed at the start of each fit.
     tune_threshold : bool, default True
         For binary classification only: tune the decision threshold on
         the validation split (already required by TALENT) to maximise the
@@ -440,7 +455,18 @@ def run(
             **arg_overrides,
         )
     else:
-        # Honour late overrides
+        if getattr(args, "model_type", model_type) != model_type:
+            raise ValueError(
+                f"Prebuilt args are for {args.model_type!r}, but run() requested {model_type!r}."
+            )
+        args.model_type = model_type
+        for key, value in arg_overrides.items():
+            setattr(args, key, value)
+        if config is not None or "n_bins" in arg_overrides:
+            args.config = deepcopy(config if config is not None else args.config)
+            if hasattr(args, "n_bins"):
+                section = "training" if spec.architecture == Architecture.DEEP else "fit"
+                args.config.setdefault(section, {})["n_bins"] = args.n_bins
         if seed is not None:
             args.seed = seed
         if seed_num is not None:
@@ -456,6 +482,7 @@ def run(
             args.tune_metric = tune_metric
         args.seed = getattr(args, "seed", 0)
         args.seed_num = getattr(args, "seed_num", 1)
+        _validate_seed_num(args.seed_num)
         args.tune = getattr(args, "tune", False)
         args.n_trials = getattr(args, "n_trials", 50)
         args.tune_metric = getattr(args, "tune_metric", None)
@@ -472,14 +499,12 @@ def run(
         )
 
     # Lazy imports — we don't want to drag torch in just for `list_methods()`.
-    import torch
-    from TALENT.model.utils import (
-        set_seeds, tune_hyper_parameters,
-    )
+    from TALENT.model.utils import get_device, set_seeds, tune_hyper_parameters
 
-    # Resolve device
-    if not hasattr(args, "device"):
-        args.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    requested_device = getattr(args, "device", None)
+    if requested_device is None and getattr(args, "gpu", None) in ("cpu", ""):
+        requested_device = "cpu"
+    args.device = get_device(requested_device)
 
     # Detect regression
     is_regression = info.get('task_type') == 'regression'
@@ -608,6 +633,13 @@ def run(
         method_type=model_type,
         config=getattr(args, "config", {}) or {},
         save_path=getattr(args, "save_path", None),
+        provenance={
+            "method": model_type,
+            "configured_device": str(args.device),
+            "backend_distribution": spec.backend_distribution,
+            "backend_version": spec.backend_version(),
+            "checkpoint": getattr(method, "resolved_checkpoint", None),
+        },
     )
     if return_method:
         result.method = method  # type: ignore[attr-defined]

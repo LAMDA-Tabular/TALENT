@@ -52,7 +52,7 @@ class Method(object, metaclass=abc.ABCMeta):
         else:
             self.trlog['best_res'] = 0 
 
-        self.args.device = get_device()
+        self.args.device = get_device(getattr(args, "device", None))
 
 
     def reset_stats_withconfig(self, config):
@@ -113,12 +113,37 @@ class Method(object, metaclass=abc.ABCMeta):
             return X, y
         if not self.is_regression:
             from sklearn.model_selection import train_test_split
-            X, _, y, _ = train_test_split(
-                X, y,
-                train_size=sample_size,
-                stratify=y,
-                random_state=self.args.seed,
-            )
+            try:
+                selected_X, _, selected_y, _ = train_test_split(
+                    X, y, train_size=sample_size, stratify=y, random_state=self.args.seed
+                )
+                return selected_X, selected_y
+            except ValueError:
+                from sklearn.utils import _safe_indexing
+                from sklearn.utils.validation import assert_all_finite, check_consistent_length, column_or_1d
+
+                labels = column_or_1d(y)
+                assert_all_finite(labels)
+                check_consistent_length(X, labels)
+                chosen, discarded = train_test_split(
+                    np.arange(len(labels)), train_size=sample_size, random_state=self.args.seed
+                )
+                classes, counts = np.unique(labels, return_counts=True)
+                if len(chosen) < len(classes):
+                    raise ValueError(f"sample_size cannot cover all {len(classes)} training classes")
+                # sklearn requires at least two rows per class and room for each
+                # class in both partitions. Only the training partition is used.
+                if counts.min() >= 2 and len(discarded) >= len(classes):
+                    raise
+            # Reserve a random example of every class, then fill the unused
+            # slots without replacement in the same seeded row permutation.
+            order = np.concatenate([chosen, discarded])
+            _, first = np.unique(labels[order], return_index=True)
+            keep = np.zeros(len(y), dtype=bool)
+            keep[first] = True
+            keep[np.flatnonzero(~keep)[:len(chosen) - len(classes)]] = True
+            indices = order[keep]
+            return _safe_indexing(X, indices), _safe_indexing(y, indices)
         else:
             rng = np.random.RandomState(self.args.seed)
             idx = rng.choice(X.shape[0], size=sample_size, replace=False)
@@ -386,7 +411,7 @@ class Method(object, metaclass=abc.ABCMeta):
             return (mae, r2, rmse), ("MAE", "R2", "RMSE")
         elif self.is_binclass:
             # If not already in [0,1] summing to 1, convert.
-            predictions = check_softmax(predictions)
+            predictions = check_softmax(predictions, model_type=getattr(self.args, "model_type", None))
             # Hard predictions: prefer the user-supplied threshold; else argmax.
             if threshold is not None:
                 hard_preds = (predictions[:, 1] >= threshold).astype(int)

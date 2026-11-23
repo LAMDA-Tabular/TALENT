@@ -1,5 +1,5 @@
 **HyperFast**
-============
+=============
 
 A meta-trained hypernetwork that generates task-specific neural networks for instant classification of tabular data.
 

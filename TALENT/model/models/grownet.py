@@ -18,11 +18,14 @@ class DynamicNet:
         lr,
         categories: ty.Optional[ty.List[int]],
         d_embedding: ty.Optional[int],
+        device=None,
     ):
         self.models = []
         self.lr = lr
+        if device is None:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
         self.boost_rate = nn.Parameter(
-            torch.tensor(lr, requires_grad=True, device="cuda")
+            torch.tensor(lr, requires_grad=True, device=device)
         )
         if categories is not None:
             category_offsets = torch.tensor([0] + categories[:-1]).cumsum(0)
@@ -52,11 +55,17 @@ class DynamicNet:
             m.zero_grad()
 
     def to_cuda(self):
+        self.to_device("cuda")
+
+    def to_device(self, device):
         for m in self.models:
-            m.cuda()
+            m.to(device)
+        boost_rate = self.boost_rate.to(device)
+        if boost_rate is not self.boost_rate:
+            self.boost_rate = nn.Parameter(boost_rate)
         if self.category_embeddings is not None:
-            self.category_embeddings = self.category_embeddings.cuda()
-            self.category_offsets = self.category_offsets.cuda()
+            self.category_embeddings = self.category_embeddings.to(device)
+            self.category_offsets = self.category_offsets.to(device)
 
     def to_eval(self):
         for m in self.models:
@@ -119,9 +128,9 @@ class DynamicNet:
         return middle_feat_cum, self.boost_rate * prediction
 
     @classmethod
-    def from_file(cls, path, builder):
-        d = torch.load(path, weights_only=False)
-        net = DynamicNet( d['lr'], categories=None, d_embedding=None)
+    def from_file(cls, path, builder, device=None):
+        d = torch.load(path, map_location=device, weights_only=False)
+        net = cls(d['lr'], categories=None, d_embedding=None, device=device)
         net.boost_rate = d['boost_rate']
         if 'category_embeddings' in d:
             net.category_embeddings = d['category_embeddings']
@@ -210,8 +219,7 @@ class MLP_2HL(nn.Module):
         out = self.lrelu(self.in_layer(x))
         out = self.bn(out)
         out = self.hidden_layer(out)
-        return out, self.out_layer(self.relu(out)).squeeze()
-        # return out, self.out_layer(self.relu(out))
+        return out, self.out_layer(self.relu(out)).squeeze(-1)
     @classmethod
     def get_model(cls, stage, opt):
         if stage == 0:
