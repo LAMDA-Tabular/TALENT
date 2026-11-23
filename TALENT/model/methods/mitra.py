@@ -10,6 +10,7 @@ from TALENT.model.lib.data import (
     data_label_process
 )
 from TALENT.model.method_registry import weights_download_hint
+from TALENT.benchmark.measurement import timed_call, record_query_context
 import time
 
 
@@ -62,6 +63,7 @@ class MitraMethod(Method):
             # Checkpoint not bundled: fetch the official weights (same
             # config.json + model.safetensors layout) from the Hugging Face Hub.
             model_path = download_from_hf_hub(self.HF_REPOS[subdir])
+        self.resolved_checkpoint = model_path
         self.model = Mitra.from_pretrained(
             path=model_path,
             device="cpu"  # safe tensor initialization on CPU
@@ -95,7 +97,7 @@ class MitraMethod(Method):
         self.y_support = torch.from_numpy(y_support).to(self.args.device)  # [n_support]
 
         with weights_download_hint(getattr(self.args, 'model_type', 'mitra')):
-            self.construct_model()
+            timed_call("load_seconds", self.construct_model)
         if not self.is_regression and self.n_classes > self.model.dim_output:
             raise ValueError(
                 f"Mitra supports classification with at most {self.model.dim_output} "
@@ -157,11 +159,13 @@ class MitraMethod(Method):
         max_samples_support = general.get('max_samples_support', 8192)
         max_samples_query = general.get('max_samples_query', 1024)
 
+        idx = None
         if n_obs_support > max_samples_support:
             idx = torch.randperm(n_obs_support)[:max_samples_support] 
             self.x_support = self.x_support[idx, :]
             self.y_support = self.y_support[idx]
             n_obs_support = max_samples_support
+        record_query_context(n_obs_support, idx)
         
         tic = time.time()
         results = []

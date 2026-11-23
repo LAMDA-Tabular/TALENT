@@ -33,6 +33,7 @@ from TALENT.model.lib.data import (
     data_nan_process,
 )
 from TALENT.model.method_registry import weights_download_hint
+from TALENT.benchmark.measurement import timed_call
 from TALENT.model.methods.base import Method
 from TALENT.model.methods.foundation_base import resolve_n_estimators
 from TALENT.model.utils import probability_nll
@@ -173,7 +174,7 @@ class KumoTabularMethod(Method):
         x_train = self._to_table(N_train, C_train)
         y_train = self._to_target(y_train)
         with weights_download_hint(getattr(self.args, 'model_type', 'kumo_tabular')):
-            self.construct_model()
+            timed_call("load_seconds", self.construct_model)
         generator = torch.Generator(device=self._device).manual_seed(self.args.seed)
 
         tic = time.time()

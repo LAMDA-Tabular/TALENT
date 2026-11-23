@@ -108,6 +108,25 @@ class Method(object, metaclass=abc.ABCMeta):
         seeded with ``args.seed`` for reproducibility. Returns (X, y)
         unchanged when no cap applies.
         """
+        from TALENT.benchmark.measurement import record_support, support_ids
+
+        ids = support_ids()
+        if ids is not None:
+            from sklearn.utils import _safe_indexing
+            if len(ids) != len(y) or len(ids) != X.shape[0]:
+                raise ValueError("cannot trace adapter support: input rows differ from the split")
+            sample_size = self.resolve_sample_size()
+            if sample_size is None or len(ids) <= sample_size:
+                record_support(len(ids), list(ids))
+                return X, y
+            indices, selected_y = self._subsample_train_rows(np.arange(len(ids)), y)
+            record_support(len(indices), [ids[i] for i in indices])
+            return _safe_indexing(X, indices), selected_y
+        selected_X, selected_y = self._subsample_train_rows(X, y)
+        record_support(len(selected_y))
+        return selected_X, selected_y
+
+    def _subsample_train_rows(self, X, y):
         sample_size = self.resolve_sample_size()
         if sample_size is None or X.shape[0] <= sample_size:
             return X, y
@@ -146,9 +165,16 @@ class Method(object, metaclass=abc.ABCMeta):
             return _safe_indexing(X, indices), _safe_indexing(y, indices)
         else:
             rng = np.random.RandomState(self.args.seed)
+            if isinstance(sample_size, (float, np.floating)):
+                if not 0 < sample_size < 1:
+                    raise ValueError("a fractional sample_size must be between 0 and 1")
+                sample_size = int(X.shape[0] * sample_size)
+                if sample_size == 0:
+                    raise ValueError("sample_size selects zero training rows")
             idx = rng.choice(X.shape[0], size=sample_size, replace=False)
-            X = X[idx]
-            y = y[idx]
+            from sklearn.utils import _safe_indexing
+            X = _safe_indexing(X, idx)
+            y = _safe_indexing(y, idx)
         return X, y
 
 

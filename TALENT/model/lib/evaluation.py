@@ -32,6 +32,8 @@ from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
+from TALENT.benchmark.measurement import timed_call
+
 
 # ----------------------------------------------------------------------------
 #  Helpers
@@ -168,7 +170,7 @@ def evaluate(
     is_binclass = task == "binclass"
 
     # ------ 1. Predict on TEST ------------------------------------------------
-    test_result = method.predict(test_data, info, model_name=model_name)
+    test_result = timed_call("predict_seconds", method.predict, test_data, info, model_name=model_name)
     if len(test_result) == 4:
         vl, vres, metric_names, test_predictions = test_result
     elif len(test_result) == 3:

@@ -11,6 +11,7 @@ from TALENT.model.lib.data import (
     mse_safe_broadcast,
 )
 from TALENT.model.method_registry import weights_download_hint
+from TALENT.benchmark.measurement import timed_call
 from TALENT.model.utils import probability_nll
 import time
 
@@ -83,9 +84,10 @@ class LimiXMethod(Method):
             resolve_bundled_path(f"model/lib/limix/config/{cfg_name}")
             or f"./TALENT/model/lib/limix/config/{cfg_name}"
         )
+        self.resolved_checkpoint = self.checkpoint_path()
         self.model = LimiXPredictor(
             device = self.args.device,
-            model_path = self.checkpoint_path(),
+            model_path = self.resolved_checkpoint,
             inference_config = config_path,
             task_type = "Regression" if self.is_regression else "Classification",
             mask_prediction = False,
@@ -123,7 +125,7 @@ class LimiXMethod(Method):
         self.x_support = x_support.astype(np.float32)
         self.y_support = y_support.astype(np.float32 if self.is_regression else np.int64)
         with weights_download_hint(getattr(self.args, 'model_type', 'limix')):
-            self.construct_model()
+            timed_call("load_seconds", self.construct_model)
         self.fit_time = 0  # in-context model: all work happens in predict()
 
 

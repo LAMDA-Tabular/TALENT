@@ -122,6 +122,8 @@ class RunResult:
 
     # Runtime identity for the final seed; to_dict() keeps its historical schema.
     provenance: Dict[str, Any] = field(default_factory=dict)
+    measurements: Dict[str, Any] = field(default_factory=dict)
+    split_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Return a JSON-safe summary (predictions excluded)."""
@@ -368,6 +370,8 @@ def run(
     tune_threshold: bool = True,
     threshold_metric: str = "f1",
     tune_metric: Optional[str] = None,
+    measure: bool = False,
+    hash_checkpoint: bool = False,
     **arg_overrides,
 ) -> RunResult:
     """Fit a TALENT method on ``train_val_data`` and predict on ``test_data``.
@@ -427,6 +431,11 @@ def run(
         ``TALENT.model.lib.tuning_metric.supported_tune_metrics()``. Not
         supported for methods that tune on an internal loss (``tabnet``,
         ``ptarl``, ``tabcaps``).
+    measure : bool, default False
+        Record per-seed wall times, observed device and context, checkpoint
+        identity, and sampled process memory in `result.measurements`.
+    hash_checkpoint : bool, default False
+        With measurement enabled, also hash a resolved local checkpoint file.
     **arg_overrides
         Passed through to :func:`build_args`.
 
@@ -435,6 +444,9 @@ def run(
     RunResult
     """
     spec = get_method_spec(model_type)
+
+    if hash_checkpoint and not measure:
+        raise ValueError("hash_checkpoint requires measure=True")
 
     # Build args if not provided. With a pre-built args object, preserve its
     # values unless the caller explicitly passes the matching optional kwarg.
@@ -520,6 +532,9 @@ def run(
         )
 
     method_cls = spec.get_class()
+    from TALENT.benchmark.measurement import measuring, timed_call
+
+    measurements = {"tuning_seconds": None, "seeds": []} if measure else {}
 
     # Optional HPO. The current `tune_hyper_parameters` mutates args.config.
     if args.tune and spec.supports_hpo:
@@ -530,7 +545,10 @@ def run(
             raise FileNotFoundError(
                 f"opt_space config for {model_type!r} not found in packaged configs."
             )
-        args = tune_hyper_parameters(args, opt_space, train_val_data, info)
+        with measuring(args.device, measure) as meter:
+            args = timed_call("tuning_seconds", tune_hyper_parameters, args, opt_space, train_val_data, info)
+            if meter is not None:
+                measurements["tuning_seconds"] = meter.data["tuning_seconds"]
 
     # Use the centralized evaluator so the CLI scripts and the API share
     # the exact same evaluation logic (predict_proba standardization +
@@ -554,26 +572,28 @@ def run(
         if verbose:
             print(f"[TALENT.api.run] seed={args.seed} method={model_type}")
 
-        method = method_cls(args, is_regression)
-        fit_ret = method.fit(train_val_data, info)
-        # Deep methods set self.fit_time; classical methods return the time
-        # cost from fit(). Prefer self.fit_time and fall back to the return.
-        fit_time = getattr(method, "fit_time", None)
-        if fit_time is None and isinstance(fit_ret, (int, float)):
-            fit_time = float(fit_ret)
-        elif fit_time is None:
-            fit_time = 0.0
-
-        eval_result = evaluate(
-            method,
-            train_val_data,
-            test_data,
-            info,
-            model_name=args.evaluate_option,
-            output_type=spec.output_type,
-            tune_threshold=tune_threshold,
-            threshold_metric=threshold_metric,
-        )
+        with measuring(args.device, measure) as meter:
+            method = timed_call("init_seconds", method_cls, args, is_regression)
+            fit_ret = timed_call("fit_seconds", method.fit, train_val_data, info)
+            # Deep methods set self.fit_time; classical methods return the time
+            # cost from fit(). Prefer self.fit_time and fall back to the return.
+            fit_time = getattr(method, "fit_time", None)
+            if fit_time is None and isinstance(fit_ret, (int, float)):
+                fit_time = float(fit_ret)
+            elif fit_time is None:
+                fit_time = 0.0
+            eval_result = evaluate(
+                method, train_val_data, test_data, info,
+                model_name=args.evaluate_option,
+                output_type=spec.output_type,
+                tune_threshold=tune_threshold,
+                threshold_metric=threshold_metric,
+            )
+            if meter is not None:
+                meter.data["train_rows"] = len(train_val_data[2]["train"])
+                meter.data["validation_rows"] = len(train_val_data[2]["val"])
+                meter.finish(method, spec, len(test_data[2]["test"]), hash_checkpoint)
+                measurements["seeds"].append(meter.data)
         vl = eval_result["loss"]
         vres = eval_result["metrics"]
         metric_names = eval_result["metric_names"]
@@ -631,6 +651,7 @@ def run(
         metrics_std=m_std,
         per_seed=per_seed,
         method_type=model_type,
+        measurements=measurements,
         config=getattr(args, "config", {}) or {},
         save_path=getattr(args, "save_path", None),
         provenance={

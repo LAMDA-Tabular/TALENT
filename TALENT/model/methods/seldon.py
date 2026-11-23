@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from TALENT.benchmark.measurement import timed_call
 from TALENT.model.methods.foundation_base import SklearnFoundationMethod
 
 
@@ -30,7 +31,7 @@ class SeldonMethod(SklearnFoundationMethod):
         for key in ("n_estimators", "revision", "amp", "max_context_size", "query_chunk_size"):
             if key in general:
                 options[key] = general[key]
-        self.model = estimator.from_pretrained(checkpoint, **options)
+        self.model = timed_call("load_seconds", estimator.from_pretrained, checkpoint, **options)
         task = "regressor" if self.is_regression else "classifier"
         self.resolved_checkpoint = (
             str(checkpoint) if isinstance(checkpoint, Path)

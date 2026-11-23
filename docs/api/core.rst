@@ -13,6 +13,22 @@ for an ``(n_rows, n_classes)`` array and ``predict_labels`` for encoded class
 indices. For regression, use ``predictions`` in the original target units.
 See :doc:`../tutorials` for a runnable example.
 
+Reproducible benchmarks
+-----------------------
+
+Use ``TALENT.benchmark.make_split`` to create a random, grouped or temporal
+partition from stable row IDs. ``BenchmarkSplit.save`` and
+``BenchmarkSplit.load`` persist the ordered IDs. ``with_context(k)`` varies
+the training size while holding validation and test rows fixed. Call
+``split.run(..., measure=True)`` to attach the split fingerprint and collect
+per-seed measurements in ``result.measurements``. The existing runner also
+accepts ``measure=True`` for datasets with their own splits.
+
+``result_record`` extracts one metric from a run. ``compare_runs`` takes
+these records and the planned dataset and split IDs. It returns coverage,
+matched rankings, fit and prediction costs, and paired differences against a
+reference method. A confidence interval requires at least two matched datasets.
+
 Method infrastructure
 ---------------------
 
@@ -89,4 +105,4 @@ The method base provides the foundational infrastructure:
 
    utils
    data
-   method_base 
+   method_base

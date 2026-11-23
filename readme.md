@@ -79,7 +79,7 @@ Welcome to **TALENT**, a benchmark with a comprehensive machine learning toolbox
 
 ## 📰 What's New
 
-- [2026-11] Added **Seldon**, **Seldon-mini**, **Inpriora**, **LimiX-2-1016** and **TabDPT 1.3**, with backend checks and run provenance. Fixed binary metrics, device selection, preprocessing defaults and model-specific prediction errors.
+- [2026-11] Added **Seldon**, **Seldon-mini**, **Inpriora**, **LimiX-2-1016** and **TabDPT 1.3**, with backend checks and run provenance. Added [benchmark measurements, replayable splits and matched comparisons](#reproducible-benchmarks). Fixed binary metrics, device selection, preprocessing defaults and model-specific prediction errors.
 
 - [2026-10]🌟 Add the September 2026 wave of tabular foundation models: **[TabPFN-3.5](https://github.com/PriorLabs/TabPFN)**, **[LimiX-2](https://github.com/limix-ldm-ai/LimiX)**, **[NVIDIA Kumo Tabular](https://github.com/NVIDIA/structured-data-models)**, **[Mitra-v2](https://arxiv.org/abs/2609.04540)**, **[Causilo](https://github.com/nums-ai/causilo)**, **[Xiaomi-TabLDM](https://github.com/xiaomi-research/xiaomi-tabldm)** and **[EXAONE-Tabular](https://github.com/LGAI-Research/EXAONE-Tabular)**. The new adapters document their weight sources and supported options; `tabpfn_v3` now pins the TabPFN-3 checkpoint (`tabpfn>=9.0` changed the package default to TabPFN-3.5).
 - [2026-08]🌟 Add **[TRC](https://arxiv.org/abs/2603.16569)** (TPAMI 2026), a post-hoc representation corrector that trains and freezes an FT-Transformer backbone before learning representation re-estimation and light-space mapping.
@@ -264,6 +264,48 @@ result = TALENT.run("catboost", train_val, test, info, tune=True, n_trials=50, s
 print("Mean metrics:", dict(zip(result.metric_names, result.metrics_mean)))
 print("Std metrics:",  dict(zip(result.metric_names, result.metrics_std)))
 ```
+
+#### Reproducible benchmarks
+
+Use stable string row IDs to save the exact training, validation, test and context rows. This example compares logistic regression with the dummy baseline on the same 32 training rows and the same held-out data.
+
+```python
+import tempfile
+from pathlib import Path
+
+import numpy as np
+from TALENT.benchmark import BenchmarkSplit, compare_runs, make_split, result_record
+
+X = np.random.default_rng(7).normal(size=(100, 4))
+y = (X[:, 0] > 0).astype(int)
+ids = [f"row-{i}" for i in range(len(y))]
+info = {"task_type": "binclass", "n_num_features": 4, "n_cat_features": 0}
+split = make_split(ids, seed=42).with_context(32)
+split.save("split.json")
+split = BenchmarkSplit.load("split.json")
+
+methods = ["LogReg", "dummy"]
+records = []
+with tempfile.TemporaryDirectory() as tmp:
+    for method in methods:
+        result = split.run(method, ids, X, None, y, info, device="cpu",
+                           measure=True, save_path=str(Path(tmp) / method))
+        records.append(result_record(result, "demo-v1", "Accuracy"))
+
+report = compare_runs(records, expected={"demo-v1": [split.split_id]},
+                      methods=methods, metric="Accuracy", reference="dummy")
+print(report["ranking"], report["counts"], report["contrasts"])
+```
+
+**Choosing a split.** Pass `groups=` to keep whole groups together or `timestamps=` for chronological training, validation and test periods. Equal timestamps stay together. Validation and test fractions apply to the number of rows, groups or distinct timestamps, respectively. `with_context(k)` selects nested training subsets and preserves both holdouts. Temporal contexts use the most recent training rows. For classification, check class coverage when choosing small contexts. You can also construct `BenchmarkSplit(train, val, test, context)` with your own ordered ID sequences. The manifest stores IDs in plain text and fingerprints their assignments and order. Use non-sensitive IDs and record the dataset version separately. Replaying the manifest accepts reordered source data and checks that the row IDs match.
+
+**Measuring a run.** Pass `measure=True` to `run`, `run_from_dataset` or `split.run`. `result.measurements` contains the shared tuning time (including cache lookup, when applicable) and a record per seed. Each record gives adapter initialization, the complete fit call, the test prediction call and test time scaled to 1,000 rows. Prediction timing includes work inside the adapter's test call and excludes the evaluator's separate validation call for threshold selection. Where instrumented, `load_seconds` measures backend initialization with checkpoint loading and overlaps the fit time. These times reflect the current cache state.
+
+The record includes the PyTorch version, CUDA device name, fitted model device, optional backend version and checkpoint identity where observable. Set `hash_checkpoint=True` to hash a resolved local checkpoint file. Memory values are sampled peaks for the current process (RSS with optional `psutil`) and PyTorch allocations on the configured CUDA device. Short-lived allocations can fall between samples. Use one process per run for comparable memory measurements.
+
+Set `capture_support_ids=True` on a measured `split.run` to retain the ordered IDs selected by TALENT's shared support sampler. Its `sample_size` option accepts a row count or a fraction for both classification and regression. Mitra also records the context passed to each test query after its inference cap. External backends can perform further per-query retrieval. Unavailable observations are `None`.
+
+**Comparing methods.** Supply the full planned dataset and split schedule, including runs that produced no result. Record an unsuccessful run with `dataset`, `split_id`, `method`, `status` (`"failed"` or `"skipped"`) and an optional `reason`. The report lists every planned cell, including missing and non-finite results. Rankings use splits completed by every method, average splits within each dataset, then weight datasets equally. Fit and prediction cost use the same cells and include their measurement counts. Each reference comparison uses its own matched splits and reports per-dataset differences plus a paired Student *t* interval when at least two datasets contribute. These are unadjusted intervals across dataset means. Set `higher_is_better=False` for a loss. Positive differences always favor the method being compared with the reference.
 
 #### Selecting a foundation model release
 

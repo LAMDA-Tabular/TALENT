@@ -24,11 +24,14 @@ import inspect
 from importlib.metadata import PackageNotFoundError, version
 import os
 
+from TALENT.benchmark.measurement import timed_call
 from TALENT.model.methods.foundation_base import SklearnFoundationMethod, resolve_n_estimators
 
 
 class TabDPTMethod(SklearnFoundationMethod):
     """TabDPT (tabular foundation model with retrieval + ICL)."""
+
+    EAGER_CHECKPOINT_LOAD = False
 
     def construct_model(self, model_config=None, cat_indices=None):
         try:
@@ -75,7 +78,10 @@ class TabDPTMethod(SklearnFoundationMethod):
         supported = self._supported_kwargs(model_cls.__init__, init_kwargs)
         if checkpoint is not None and "model_weight_path" not in supported:
             raise ValueError("This tabdpt backend cannot select a local checkpoint. Install tabdpt 1.3.x.")
-        self.model = model_cls(**supported)
+        if self.EAGER_CHECKPOINT_LOAD:
+            self.model = timed_call("load_seconds", model_cls, **supported)
+        else:
+            self.model = model_cls(**supported)
         self.resolved_checkpoint = os.fspath(checkpoint) if checkpoint is not None else None
 
     @staticmethod
@@ -109,6 +115,8 @@ class TabDPTMethod(SklearnFoundationMethod):
 
 class TabDPTv13Method(TabDPTMethod):
     """Use the 1.3 architecture and its matching publisher checkpoint by default."""
+
+    EAGER_CHECKPOINT_LOAD = True
 
     def construct_model(self, model_config=None, cat_indices=None):
         try:
