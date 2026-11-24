@@ -11,8 +11,8 @@ class TabAutoPNPNetMethod(Method):
             model_config = self.args.config['model']
         from TALENT.model.models.tabautopnpnet import TabAutoPNPNet
         self.model = TabAutoPNPNet(
-            categorical_input_size=len(self.categories),
-            continuous_input_size=self.n_num_features,
+            categorical_input_size=len(self.categories or ()),
+            continuous_input_size=self.d_in,
             output_size=self.d_out,
             **model_config
         ).to(self.args.device)

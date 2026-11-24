@@ -5,6 +5,8 @@
 # incompatibility with a much newer release, pin the offending package back
 # to the version listed here.
 annoy>=1.17.3
+filelock
+joblib
 tqdm>=4.66.4
 category_encoders>=2.6.3
 delu>=0.0.23

@@ -43,6 +43,13 @@ wall time per fold, and row IDs aligned with out-of-fold predictions.
 ``TALENT.cross_validate_from_dataset`` evaluates the original training and
 validation rows of a TALENT-format dataset and reserves its test split.
 
+Pass ``tune=True, hpo_cv=3`` to score each Optuna candidate on three
+held-out inner folds. The result's ``hpo_splits`` maps the enclosing split ID
+to its scoring manifests. Set ``resume_dir`` to checkpoint completed fold
+results and save each fit's Optuna study in SQLite. Rerunning the same
+protocol there reuses completed work. ``resume_key`` can identify external
+model revisions.
+
 Every run reports elapsed fit and test prediction time. Set ``measure=True``
 to add memory, tuning time and backend information.
 

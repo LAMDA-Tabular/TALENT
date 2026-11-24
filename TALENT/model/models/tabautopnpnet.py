@@ -33,7 +33,7 @@ class TabAutoPNPNet(BaseTabNet):
             num_fourier_features=num_fourier_features,
             max_poly_terms=max_poly_terms,
             poly_type=poly_type
-        )
+        ) if continuous_input_size else None
 
         # Initialize BaseTabNet with the AutoPNP layer for continuous features and MLP for categorical features
         super(TabAutoPNPNet, self).__init__(

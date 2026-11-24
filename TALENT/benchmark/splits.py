@@ -6,6 +6,7 @@ import os
 import tempfile
 from dataclasses import asdict, dataclass, replace
 from datetime import date
+from functools import cached_property
 from numbers import Integral, Real
 from pathlib import Path
 
@@ -48,7 +49,7 @@ class BenchmarkSplit:
     def _payload(self):
         return {"version": 1, **asdict(self)}
 
-    @property
+    @cached_property
     def split_id(self):
         """SHA-256 of the ordered partitions, context and split strategy."""
         encoded = json.dumps(self._payload(), sort_keys=True, separators=(",", ":"))

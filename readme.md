@@ -79,7 +79,7 @@ Welcome to **TALENT**, a benchmark with a comprehensive machine learning toolbox
 
 ## 📰 What's New
 
-- [2026-11] Added **Seldon**, **Seldon-mini**, **Inpriora**, **LimiX-2-1016** and **TabDPT 1.3**, with backend checks and run provenance. Added [native cross-validation](#cross-validation), optional inner threshold selection, shared fit and prediction timers, [replayable splits and matched comparisons](#reproducible-benchmarks). Fixed binary metrics, device selection, preprocessing defaults and model-specific prediction errors.
+- [2026-11-24] Added [cross-validation](#cross-validation) with stratified, grouped and temporal folds, inner threshold selection, [fold-averaged Optuna objectives and resumable studies](#tuning-across-folds-and-resuming-a-run). Every run now records fit and prediction time. Added [replayable splits and matched comparisons](#reproducible-benchmarks) and five foundation model releases (Seldon, Seldon-mini, Inpriora, LimiX-2-1016 and TabDPT 1.3). Fixed binary metrics, preprocessing defaults, failed-trial handling, XGBoost tuning device selection, and TabAutoPNPNet tuning and single-feature-type inputs.
 
 - [2026-10]🌟 Add the September 2026 wave of tabular foundation models: **[TabPFN-3.5](https://github.com/PriorLabs/TabPFN)**, **[LimiX-2](https://github.com/limix-ldm-ai/LimiX)**, **[NVIDIA Kumo Tabular](https://github.com/NVIDIA/structured-data-models)**, **[Mitra-v2](https://arxiv.org/abs/2609.04540)**, **[Causilo](https://github.com/nums-ai/causilo)**, **[Xiaomi-TabLDM](https://github.com/xiaomi-research/xiaomi-tabldm)** and **[EXAONE-Tabular](https://github.com/LGAI-Research/EXAONE-Tabular)**. The new adapters document their weight sources and supported options; `tabpfn_v3` now pins the TabPFN-3 checkpoint (`tabpfn>=9.0` changed the package default to TabPFN-3.5).
 - [2026-08]🌟 Add **[TRC](https://arxiv.org/abs/2603.16569)** (TPAMI 2026), a post-hoc representation corrector that trains and freezes an FT-Transformer backbone before learning representation re-estimation and light-space mapping.
@@ -332,6 +332,26 @@ For a TALENT-format dataset on disk, use `TALENT.cross_validate_from_dataset("Lo
 - **Results and cost.** `results` contains one standard `RunResult` per outer fold. `metrics_mean` averages the seed-averaged metrics across folds with equal weight. `out_of_fold()` returns scored row IDs alongside last-seed predictions. `fold_seconds` includes all inner fits, HPO, threshold selection and the final outer run. Five outer folds with three inner threshold folds require twenty runner calls before counting HPO trials or multiple seeds.
 - **Replaying folds.** Inspect `splits` and `threshold_splits` on the result, or call `TALENT.make_folds()` to plan folds before fitting. Save a fold with `split.save(path)`. To replay an inner or temporal manifest against the full source table, call `split.run(..., allow_extra_rows=True)`. To reuse a completed fold's inner-selected thresholds, also pass the same seeds and settings and `decision_threshold={s["seed"]: s["threshold"] for s in fold_result.per_seed}`. Each CV invocation creates a fresh subdirectory under `save_path` for its checkpoints and tuned configurations.
 
+#### Tuning across folds and resuming a run
+
+```python
+import TALENT
+
+result = TALENT.cross_validate_from_dataset(
+    "LogReg", "bank", "./example_datasets",
+    cv=5, tune=True, hpo_cv=3, n_trials=10, tune_metric="AUC",
+    resume_dir="./runs/bank-logreg", device="cpu",
+)
+```
+
+`hpo_cv=3` samples one configuration per Optuna trial, fits it separately on three inner folds, and optimises the unweighted mean of their held-out scores. Each candidate fit has its own validation partition for early stopping. The selected configuration is refitted for the enclosing split. Without an explicit metric, fold-averaged HPO uses accuracy for classification, RMSE for classical regression and MAE for deep regression. With `threshold_cv` enabled, each threshold fit gets its own HPO study restricted to its development rows. Group and time boundaries apply at every level. The example runs 150 candidate fits and five outer refits. Omitting `hpo_cv` retains single-validation HPO.
+
+Set `resume_dir` to an empty local directory, then repeat the same call there after interruption. Completed outer and threshold fits are restored with their predictions, scores and timings. Each tuned fit stores its Optuna history in `study.sqlite3` under its own `fold-N/outer` or `fold-N/inner-M` directory. Histories include sampled parameters, the resolved configuration, trial state and duration. Fold-averaged trials also record the scoring-fold IDs and individual scores. Load a database with `optuna.load_study(study_name="tuning", storage="sqlite:////absolute/path/to/study.sqlite3")` (on Windows use `sqlite:///C:/.../study.sqlite3`).
+
+One process owns each resume directory at a time. TALENT checks input contents, split assignments, configuration, source, runtime and recognised local checkpoint paths before reusing results. Use `resume_key` to identify external model or data revisions that the backend resolves independently. A changed protocol or trial budget uses a new directory. Persisted results contain per-row predictions and exclude live fitted estimators. The normal `save_path` workflow continues to create fresh runs.
+
+Completed trials and recorded candidate failures count toward `n_trials`. An abandoned trial is replaced. Future TPE proposals can differ from an uninterrupted search. Recovered fold time includes the recorded duration of earlier completed trials and fits. Partial work in a killed trial has no reliable duration. With `measure=True`, `tuning_seconds` records the current tuning call and `recovered_trial_seconds` records prior trial time.
+
 #### Selecting a foundation model release
 
 Use the method ID in `TALENT.run()`, `run_from_dataset()` or the deep-method CLI. Each entry below supports classification and regression. Install only the backend you intend to use.
@@ -379,9 +399,10 @@ print(supported_tune_metrics())
 ```
 
 `tune_metric` is also exposed on the CLI (`--tune_metric AUC`). It defaults to
-`None`, which preserves the previous behavior exactly. A few methods optimize an
-internal training loss and do not accept it (`tabnet`, `ptarl`, `tabcaps`); use
-the default for those.
+`None`, which preserves the historical objective. TabNet, PTaRL and TabCaps
+use an internal objective for single-validation HPO. With `hpo_cv`, outer
+candidate selection can use a reported metric while those methods retain
+their own early-stopping criteria.
 
 Native CV checks that the requested HPO metric applies to the task. For AUC it requires every class in each model-selection validation fold. For R2 it requires at least two validation rows. This is especially relevant for small grouped or chronological folds.
 

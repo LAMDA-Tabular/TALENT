@@ -31,10 +31,12 @@ class BaseTabNet(nn.Module):
         self.use_residual = use_residual
 
         # Initialize categorical feature processing
-        self.categorical_layer = CategoricalMLP(input_size=categorical_input_size, hidden_size=hidden_size)
+        self.categorical_layer = (CategoricalMLP(input_size=categorical_input_size, hidden_size=hidden_size)
+                                  if categorical_input_size else None)
 
         # Determine total features by combining processed continuous and categorical features
-        self.total_features = self.processing_layer.output_dim + hidden_size
+        self.total_features = ((processing_layer.output_dim if processing_layer is not None else 0)
+                               + (hidden_size if self.categorical_layer is not None else 0))
         self.mlp = MLP(input_size=self.total_features, output_size=output_size)
 
     def forward(self, x_continuous: torch.Tensor, x_categorical: torch.Tensor) -> torch.Tensor:
@@ -46,16 +48,13 @@ class BaseTabNet(nn.Module):
         :return: Output tensor after passing through the network.
         """
 
-        # Transform continuous features and add residual if enabled
-        x_continuous_processed = self.processing_layer(x_continuous)
-        if self.use_residual and x_continuous.shape == x_continuous_processed.shape:
-            x_continuous_processed += x_continuous
-
-        # Process one-hot encoded categorical features
-        x_categorical_processed = self.categorical_layer(x_categorical)
-
-        # Concatenate processed continuous and categorical features
-        x_combined = torch.cat([x_continuous_processed, x_categorical_processed], dim=1)
-
-        # Pass through final MLP layer for output
-        return self.mlp(x_combined)
+        features = []
+        if self.processing_layer is not None:
+            numeric = self.processing_layer(x_continuous)
+            if self.use_residual and x_continuous.shape == numeric.shape:
+                numeric = numeric + x_continuous
+            features.append(numeric)
+        if self.categorical_layer is not None:
+            dtype = next(self.categorical_layer.parameters()).dtype
+            features.append(self.categorical_layer(x_categorical.to(dtype)))
+        return self.mlp(torch.cat(features, dim=1) if len(features) > 1 else features[0])

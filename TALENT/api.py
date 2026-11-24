@@ -378,6 +378,7 @@ def run(
     tune_metric: Optional[str] = None,
     measure: bool = False,
     hash_checkpoint: bool = False,
+    _benchmark_search=None,
     **arg_overrides,
 ) -> RunResult:
     """Fit a TALENT method on ``train_val_data`` and predict on ``test_data``.
@@ -559,7 +560,8 @@ def run(
 
     # Optional HPO. The current `tune_hyper_parameters` mutates args.config.
     if args.tune and spec.supports_hpo:
-        assert_tune_metric_supported(model_type, args)
+        if not (_benchmark_search or {}).get("score_candidate"):
+            assert_tune_metric_supported(model_type, args)
         # Load opt_space — required by tune_hyper_parameters
         _, opt_space = _try_load_method_config(model_type)
         if not opt_space:
@@ -567,7 +569,8 @@ def run(
                 f"opt_space config for {model_type!r} not found in packaged configs."
             )
         with measuring(args.device, measure) as meter:
-            args = timed_call("tuning_seconds", tune_hyper_parameters, args, opt_space, train_val_data, info)
+            args = timed_call("tuning_seconds", tune_hyper_parameters, args, opt_space, train_val_data,
+                              info, **(_benchmark_search or {}))
             if meter is not None:
                 measurements["tuning_seconds"] = meter.data["tuning_seconds"]
 

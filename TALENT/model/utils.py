@@ -621,7 +621,8 @@ def show_results(args, info, metric_name, loss_list, results_list, time_list):
     print('-' * 50)
 
 
-def tune_hyper_parameters(args, opt_space, train_val_data, info):
+def tune_hyper_parameters(args, opt_space, train_val_data, info, *, score_candidate=None,
+                          persist=False, recovery=None):
     """
     Tune hyper-parameters.
 
@@ -640,7 +641,8 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info):
     # Validate here as well so the CLI path fails fast on a typo (the Python
     # API already validates before calling this function).
     validate_tune_metric(resolve_tune_metric(args))
-    assert_tune_metric_supported(args.model_type, args)
+    if score_candidate is None:
+        assert_tune_metric_supported(args.model_type, args)
     # The tuned config depends on the objective, so a metric-specific search
     # gets its own cache file; tune_metric=None keeps the historical filename.
     tune_metric = resolve_tune_metric(args)
@@ -650,7 +652,7 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info):
         else '{}-tuned-{}.json'.format(args.model_type, tune_metric),
     )
 
-    def objective(trial):
+    def sample_config(trial):
         config = {}
         try:
             opt_space[args.model_type]['training']['n_bins'] = [
@@ -667,15 +669,19 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info):
         merge_sampled_parameters(
             config, sample_parameters(trial, opt_space[args.model_type], config)
         )
-        if args.model_type == 'xgboost' and torch.cuda.is_available():
+        requested = getattr(args, 'device', None)
+        if requested is None and getattr(args, 'gpu', None) in ('cpu', ''):
+            requested = 'cpu'
+        device = get_device(requested)
+        if args.model_type == 'xgboost' and device.type == 'cuda':
             # XGBoost >= 2.0 GPU API: tree_method='hist' + device='cuda'.
             # The legacy 'gpu_hist' / 'gpu_id' form was deprecated in 2.0 and
             # removed in 3.0, so we use the modern form to stay compatible
             # across the supported XGBoost range.
             config['model']['tree_method'] = 'hist'
-            config['model']['device'] = 'cuda'
+            config['model']['device'] = str(device)
             config['fit']["verbose"] = False
-        elif args.model_type == 'catboost' and torch.cuda.is_available():
+        elif args.model_type == 'catboost' and device.type == 'cuda':
             config['fit']["logging_level"] = "Silent"
 
         elif args.model_type == 'RandomForest':
@@ -786,18 +792,19 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info):
                 # same range as for non-glu activations
                 config['model']['d_ffn_factor'] *= 2 / 3
 
-        trial_configs.append(config)
-        # method.fit(train_val_data, info, train=True, config=config)  
-        # run with this config
-        try:
-            method.fit(train_val_data, info, train=True, config=config)
-            return method.trlog['best_res']
-        except Exception as e:
-            print(e)
-            from TALENT.model.lib.tuning_metric import worst_objective_value
-            return worst_objective_value(args, info['task_type'] == 'regression')
+        return config
 
-    if osp.exists(tuned_config_path) and args.retune == False:
+    def objective(trial):
+        config = sample_config(trial)
+        trial.set_user_attr("config", config)
+        method.fit(train_val_data, info, train=True, config=config)
+        score = float(method.trlog['best_res'])
+        if not np.isfinite(score):
+            raise ValueError("non-finite validation objective")
+        return score
+
+    benchmark_search = persist or score_candidate is not None
+    if not benchmark_search and osp.exists(tuned_config_path) and args.retune == False:
         with open(tuned_config_path, 'rb') as fp:
             args.config = json.load(fp)
     else:
@@ -813,24 +820,28 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info):
                     opt_space[args.model_type]['model'][key][0] = '?' + opt_space[args.model_type]['model'][key][0]
                     opt_space[args.model_type]['model'][key].insert(1, 0.0)
 
+        if benchmark_search:
+            from TALENT.benchmark.study import optimize_candidates
+            args.config = optimize_candidates(args, info, train_val_data, direction,
+                                              sample_config, score_candidate, persist, recovery)
+            return args
+
         method = get_method(args.model_type)(args, info['task_type'] == 'regression')
 
-        trial_configs = []
         study = optuna.create_study(
             direction=direction,
             sampler=optuna.samplers.TPESampler(seed=0),
         )
         study.optimize(
             objective,
-            **{'n_trials': args.n_trials},
+            n_trials=args.n_trials, catch=(Exception,),
             show_progress_bar=True,
         )
-        # get best configs
-        best_trial_id = study.best_trial.number
-        # update config files        
+        if not study.get_trials(deepcopy=False, states=(optuna.trial.TrialState.COMPLETE,)):
+            raise RuntimeError(f"No Optuna trial completed successfully for {args.model_type}")
         print('Best Hyper-Parameters')
-        print(trial_configs[best_trial_id])
-        args.config = trial_configs[best_trial_id]
+        args.config = study.best_trial.user_attrs["config"]
+        print(args.config)
         with open(tuned_config_path, 'w') as fp:
             json.dump(args.config, fp, sort_keys=True, indent=4)
     return args

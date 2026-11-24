@@ -1,16 +1,17 @@
 """Cross-validation using the same adapters, evaluator and row manifests as a single run."""
 
-import tempfile
+import os
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from functools import partial
 from itertools import chain
 from numbers import Integral
-from pathlib import Path
 from time import perf_counter
 
 import numpy as np
 
 from .splits import BenchmarkSplit, _ids, _unit_codes
+from .checkpoint import load_result, run_directory, run_identity, save_result
 
 
 def _fold_count(value, name):
@@ -90,6 +91,7 @@ class CrossValidationResult:
     threshold_splits: tuple
     fold_seconds: tuple
     save_path: str
+    hpo_splits: dict = field(default_factory=dict)
 
     @property
     def metrics_mean(self):
@@ -107,18 +109,39 @@ class CrossValidationResult:
         return tuple(key for split in self.splits for key in split.test), np.concatenate(values)
 
 
+def _score_folds(trial, args, config, *, method, folds, data, metric):
+    """Evaluate a single sampled configuration on every held-out HPO fold."""
+    args.config = config
+    trial.set_user_attr("fold_ids", [part.split_id for part in folds])
+    scores = []
+    for index, part in enumerate(folds):
+        run = part.run(method, *data, args=deepcopy(args), tune=False, seed_num=1,
+                       tune_threshold=False, allow_extra_rows=True,
+                       save_path=os.path.join(args.save_path, str(index)))
+        value = float(run.metrics[run.metric_names.index(metric)])
+        if not np.isfinite(value):
+            raise ValueError(f"Undefined {metric} on HPO fold {index}")
+        scores.append(value)
+        trial.report(value, step=index)
+    return float(np.mean(scores))
+
+
 def cross_validate(method, row_ids, N, C, y, info, *, cv=5, split_seed=0, val_fraction=0.2,
-                   groups=None, timestamps=None, gap=0, threshold_cv=None, save_path=None, **options):
+                   groups=None, timestamps=None, gap=0, threshold_cv=None, hpo_cv=None,
+                   save_path=None, resume_dir=None, resume_key=None, **options):
     """Evaluate one method with TALENT.run on disjoint outer test folds.
 
     Classification uses stratification for ordinary shuffled folds. Supply
     groups or timestamps to preserve their boundaries at every level. Optional
     threshold_cv selects a binary threshold per seed from inner out-of-fold
-    probabilities. HPO and early stopping use each fit's validation partition.
+    probabilities. With tune=True, hpo_cv evaluates each sampled configuration
+    on held-out inner folds. Each candidate fit has its own validation data
+    for early stopping. Use resume_dir for durable fold results and Optuna
+    history. Repeat the same call to continue an interrupted benchmark.
+    resume_key can identify external data or model revisions.
     """
     from TALENT import get_method_spec
     from TALENT.model.method_registry import OutputType
-    from TALENT.model.lib.threshold import tune_threshold
     from TALENT.model.lib.tuning_metric import validate_tune_metric
 
     spec = get_method_spec(method)
@@ -164,6 +187,20 @@ def cross_validate(method, row_ids, N, C, y, info, *, cv=5, split_seed=0, val_fr
     args = options.get("args")
     tune = options.get("tune")
     tune = getattr(args, "tune", False) if tune is None else tune
+    search_folds = {}
+    if hpo_cv is not None:
+        _fold_count(hpo_cv, "hpo_cv")
+        if not tune or not spec.supports_hpo:
+            raise ValueError("hpo_cv requires tune=True and a tunable method")
+        for split in chain(folds, chain.from_iterable(nested)):
+            dev = [positions[key] for key in split.train + split.val]
+            search_folds[split.split_id] = plan(dev, hpo_cv)
+    if resume_dir is not None and (options.get("return_method") or save_path is not None):
+        raise ValueError("resume_dir owns its output directory and supports prediction results only")
+    if resume_key is not None and resume_dir is None:
+        raise ValueError("resume_key requires resume_dir")
+    if resume_dir is not None and split_seed is None and timestamps is None:
+        raise ValueError("resumable shuffled CV requires a fixed split_seed")
     metric = options.get("tune_metric") or getattr(args, "tune_metric", None)
     objective = validate_tune_metric(metric) if tune else None
     regression_metric = objective in ("MAE", "RMSE", "R2")
@@ -173,7 +210,7 @@ def cross_validate(method, row_ids, N, C, y, info, *, cv=5, split_seed=0, val_fr
     classes = np.unique(labels) if classification else None
     if info["task_type"] == "binclass" and len(classes) != 2:
         raise ValueError("binclass requires exactly two classes")
-    for split in chain(folds, chain.from_iterable(nested)):
+    for split in chain(folds, chain.from_iterable(nested), chain.from_iterable(search_folds.values())):
         if classification:
             known = np.unique(labels[[positions[key] for key in split.train]])
             if not np.array_equal(known, classes):
@@ -185,28 +222,79 @@ def cross_validate(method, row_ids, N, C, y, info, *, cv=5, split_seed=0, val_fr
         if objective == "R2" and len(split.val) < 2:
             raise ValueError("R2 tuning requires at least two rows in every validation fold")
 
+    for split in chain.from_iterable(search_folds.values()):
+        if objective == "AUC" and len(np.unique(labels[[positions[k] for k in split.test]])) != len(classes):
+            raise ValueError("AUC tuning requires all classes in each HPO scoring fold")
+        if objective == "R2" and len(split.test) < 2:
+            raise ValueError("R2 tuning requires at least two rows in each HPO scoring fold")
+
     parent = save_path if save_path is not None else getattr(args, "save_path", None)
-    if parent is not None:
-        Path(parent).mkdir(parents=True, exist_ok=True)
-    root = Path(tempfile.mkdtemp(prefix=f"talent-cv-{method}-", dir=parent))
+    persistent = resume_dir is not None
+
+    def identity(root):
+        partitions = [s.split_id for s in chain(folds, chain.from_iterable(nested),
+                                                chain.from_iterable(search_folds.values()))]
+        return run_identity(spec, (ids, N, C, labels, info, groups, timestamps),
+                            (cv, split_seed, val_fraction, gap, threshold_cv, hpo_cv, resume_key, partitions),
+                            options, root)
 
     def fit(split, directory, overrides):
+        recovery = {}
         kwargs = {**options, **overrides}
         if kwargs.get("args") is not None:
             kwargs["args"] = deepcopy(kwargs["args"])
-        return split.run(method, ids, N, C, labels, info, save_path=str(directory),
-                         allow_extra_rows=True, **kwargs)
+        if tune and (persistent or hpo_cv is not None):
+            score = None
+            if hpo_cv is not None:
+                metric_name = objective or ("Accuracy" if classification else
+                                             ("RMSE" if spec.architecture.value == "classical" else "MAE"))
+                score = partial(_score_folds, method=method, folds=search_folds[split.split_id],
+                                data=(ids, N, C, labels, info), metric=metric_name)
+            kwargs["_benchmark_search"] = {"score_candidate": score, "persist": persistent,
+                                           "recovery": recovery}
+        result = split.run(method, ids, N, C, labels, info, save_path=str(directory),
+                           allow_extra_rows=True, **kwargs)
+        previous = recovery.get("trial_seconds", 0.0)
+        if result.measurements and persistent and tune:
+            result.measurements["recovered_trial_seconds"] = previous
+        return result, previous
+
+    with run_directory(method, parent, resume_dir, identity) as root:
+        return _evaluate_folds(root, folds, nested, fit, persistent, labels, positions, classes,
+                               options.get("threshold_metric", "f1"), search_folds)
+
+
+def _evaluate_folds(root, folds, nested, fit, persistent, labels, positions, classes,
+                    threshold_metric, search_folds):
+    from TALENT.model.lib.threshold import tune_threshold
 
     results, fold_seconds = [], []
     for i, (outer, inner) in enumerate(zip(folds, nested)):
         started = perf_counter()
         directory = root / f"fold-{i}"
+        receipt = directory / "outer" / "result.npz"
+        if persistent and receipt.exists():
+            result, seconds = load_result(receipt, outer.split_id)
+            results.append(result)
+            fold_seconds.append(seconds)
+            continue
+        recovered_seconds = 0.0
         overrides = {}
         if inner:
             targets = []
             per_seed = {}
             for j, split in enumerate(inner):
-                run = fit(split, directory / f"inner-{j}", {"tune_threshold": False, "return_method": False})
+                inner_dir = directory / f"inner-{j}"
+                inner_receipt = inner_dir / "result.npz"
+                if persistent and inner_receipt.exists():
+                    run, seconds = load_result(inner_receipt, split.split_id)
+                    recovered_seconds += seconds
+                else:
+                    inner_start = perf_counter()
+                    run, previous = fit(split, inner_dir, {"tune_threshold": False, "return_method": False})
+                    recovered_seconds += previous
+                    if persistent:
+                        save_result(inner_receipt, run, perf_counter() - inner_start + previous)
                 targets.extend(labels[[positions[key] for key in split.test]] == classes[1])
                 for seed_run in run.per_seed:
                     proba = seed_run["predict_proba"]
@@ -216,12 +304,17 @@ def cross_validate(method, row_ids, N, C, y, info, *, cv=5, split_seed=0, val_fr
             if len(np.unique(targets)) < 2:
                 raise ValueError("inner threshold predictions must represent both classes")
             overrides["decision_threshold"] = {
-                seed: tune_threshold(targets, np.concatenate(scores), metric=options.get("threshold_metric", "f1"))[0]
+                seed: tune_threshold(targets, np.concatenate(scores), metric=threshold_metric)[0]
                 for seed, scores in per_seed.items()
             }
-        results.append(fit(outer, directory / "outer", overrides))
-        fold_seconds.append(perf_counter() - started)
-    return CrossValidationResult(folds, tuple(results), tuple(nested), tuple(fold_seconds), str(root))
+        result, previous = fit(outer, directory / "outer", overrides)
+        results.append(result)
+        seconds = perf_counter() - started + recovered_seconds + previous
+        if persistent:
+            save_result(receipt, results[-1], seconds)
+        fold_seconds.append(seconds)
+    return CrossValidationResult(folds, tuple(results), tuple(nested), tuple(fold_seconds),
+                                 str(root), search_folds)
 
 
 def cross_validate_from_dataset(method, dataset, dataset_path="./data", **options):

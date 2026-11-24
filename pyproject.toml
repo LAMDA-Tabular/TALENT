@@ -11,6 +11,8 @@ dynamic = ["version", "description"]
 # ones TALENT is tested against, but newer releases are allowed so the
 # package installs cleanly into existing environments.
 dependencies = [
+    "filelock",
+    "joblib",
     "tqdm>=4.66.4",
     "category_encoders>=2.6.3",
     "delu>=0.0.23",
