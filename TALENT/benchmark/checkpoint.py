@@ -29,7 +29,7 @@ def run_identity(spec, data, protocol, options, root):
         config = defaults.get("config", {})
     assets = {}
     general = (config or {}).get("general") or {}
-    for key in ("model_path", "model_weight_path", "weights", "inference_config"):
+    for key in ("model_path", "model_weight_path", "checkpoint_path", "weights", "inference_config"):
         value = general.get(key)
         if not isinstance(value, (str, os.PathLike)) or not os.fspath(value):
             continue

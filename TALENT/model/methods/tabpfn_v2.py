@@ -7,7 +7,8 @@ from TALENT.model.lib.data import (
     Dataset,
     data_nan_process,
     data_enc_process,
-    data_label_process
+    data_label_process,
+    mse_safe_broadcast,
 )
 from TALENT.model.method_registry import weights_download_hint
 from TALENT.model.utils import probability_nll
@@ -28,7 +29,7 @@ class TabPFNMethod(Method):
             self.N, self.C, self.num_new_value, self.imputer, self.cat_new_value = data_nan_process(self.N, self.C, self.args.num_nan_policy, self.args.cat_nan_policy)
             self.y, self.y_info, self.label_encoder = data_label_process(self.y, self.is_regression)
             self.N, self.C, self.ord_encoder, self.mode_values, self.cat_encoder = data_enc_process(self.N, self.C, self.args.cat_policy)
-            self.criterion = F.cross_entropy if  not self.is_regression else F.mse_loss
+            self.criterion = F.cross_entropy if not self.is_regression else mse_safe_broadcast
         else:
             N_test, C_test, _, _, _ = data_nan_process(N, C, self.args.num_nan_policy, self.args.cat_nan_policy, self.num_new_value, self.imputer, self.cat_new_value)
             N_test, C_test, _, _, _ = data_enc_process(N_test, C_test, self.args.cat_policy, None, self.ord_encoder, self.mode_values, self.cat_encoder)

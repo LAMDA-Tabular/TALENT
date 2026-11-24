@@ -29,6 +29,12 @@ from .constants import (
 from .model.bar_distribution import FullSupportBarDistribution
 from .model.loading import download_model, load_model
 
+try:
+    from sklearn.utils.validation import validate_data
+except ImportError:  # scikit-learn 1.4 and 1.5
+    def validate_data(estimator, *args, ensure_all_finite, **kwargs):
+        return estimator._validate_data(*args, force_all_finite=ensure_all_finite, **kwargs)
+
 if TYPE_CHECKING:
     from sklearn.base import TransformerMixin
     from sklearn.pipeline import Pipeline
@@ -472,18 +478,17 @@ def validate_Xy_fit(
     ignore_pretraining_limits: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, npt.NDArray[Any] | None, int]:
     """Validate the input data for fitting."""
-    # Calls `BaseEstimator._validate_data()` with specification
-    X, y = estimator._validate_data(
+    X, y = validate_data(
+        estimator,
         X,
         y,
         # Parameters to `check_X_y()`
         accept_sparse=False,
         dtype=None,  # This is handled later in `fit()`
-        force_all_finite="allow-nan",
+        ensure_all_finite="allow-nan",
         ensure_min_samples=2,
         ensure_min_features=1,
         y_numeric=ensure_y_numeric,
-        estimator=estimator,
     )
 
     if X.shape[1] > max_num_features:
@@ -520,7 +525,7 @@ def validate_Xy_fit(
 
     if is_classifier(estimator):
         check_classification_targets(y)
-    # Annoyingly, the `force_all_finite` above only applies to `X` and
+    # The finite-value policy above only applies to `X` and
     # there is no way to specify this for `y`. The validation check above
     # will also only check for NaNs in `y` if `multi_output=True` which is
     # something we don't want. Hence, we run another check on `y` here.
@@ -530,7 +535,6 @@ def validate_Xy_fit(
     y = check_array(
         y,
         accept_sparse=False,
-        force_all_finite=True,
         dtype=None,  # type: ignore
         ensure_2d=False,
     )
@@ -546,7 +550,8 @@ def validate_X_predict(
     estimator: TabPFNRegressor | TabPFNClassifier,
 ) -> np.ndarray:
     """Validate the input data for prediction."""
-    return estimator._validate_data(  # type: ignore
+    return validate_data(
+        estimator,
         X,
         # NOTE: Important that reset is False, i.e. doesn't reset estimator
         reset=False,
@@ -554,8 +559,7 @@ def validate_X_predict(
         # Parameters to `check_X_y()`
         accept_sparse=False,
         dtype=None,
-        force_all_finite="allow-nan",
-        estimator=estimator,
+        ensure_all_finite="allow-nan",
     )
 
 

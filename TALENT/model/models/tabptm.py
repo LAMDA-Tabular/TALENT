@@ -36,6 +36,7 @@ class TabPTM(nn.Module):
         self.d_out = d_out
 
     def forward(self, x):
+        x = x.to(dtype=self.head.weight.dtype)
         if self.is_regression:
             '''batch x 1 x distance_num x (numK * 2)'''
             num_batch, num_class = x.shape[:2]

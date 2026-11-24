@@ -7,7 +7,8 @@ from TALENT.model.lib.data import (
     Dataset,
     data_nan_process,
     data_enc_process,
-    data_label_process
+    data_label_process,
+    mse_safe_broadcast,
 )
 from TALENT.model.method_registry import weights_download_hint
 from TALENT.benchmark.measurement import timed_call, record_query_context
@@ -33,7 +34,7 @@ class MitraMethod(Method):
             self.N, self.C, self.num_new_value, self.imputer, self.cat_new_value = data_nan_process(self.N, self.C, self.args.num_nan_policy, self.args.cat_nan_policy)
             self.y, self.y_info, self.label_encoder = data_label_process(self.y, self.is_regression)
             self.N, self.C, self.ord_encoder, self.mode_values, self.cat_encoder = data_enc_process(self.N, self.C, self.args.cat_policy)
-            self.criterion = F.cross_entropy if not self.is_regression else F.mse_loss
+            self.criterion = F.cross_entropy if not self.is_regression else mse_safe_broadcast
             self.n_classes = self.y_info['n_classes'] if not self.is_regression else None
         else:
             N_test, C_test, _, _, _ = data_nan_process(N, C, self.args.num_nan_policy, self.args.cat_nan_policy, self.num_new_value, self.imputer, self.cat_new_value)
@@ -78,6 +79,8 @@ class MitraMethod(Method):
         self.data_format(is_train = True)
         
         y_support = self.y['train']
+        if self.is_regression and y_support.ndim == 2 and y_support.shape[1] == 1:
+            y_support = y_support[:, 0]
         
         if self.N is not None and self.C is not None:
             x_support = np.concatenate((self.N['train'], self.C['train']), axis=1)

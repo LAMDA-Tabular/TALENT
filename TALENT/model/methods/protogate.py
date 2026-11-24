@@ -290,6 +290,6 @@ def proto_predict(query, neighbors, neighbor_labels, k):
     indices = torch.argsort(norms, dim=-1).to(neighbor_labels.device)
     labels = neighbor_labels[indices[:, :k]]  # n x k x num_classes
     label_counts = labels.sum(dim=1).float()  # n x num_classes
-    prediction = label_counts / float(k)
+    prediction = label_counts / labels.shape[1]
 
     return prediction, indices[:, :k]

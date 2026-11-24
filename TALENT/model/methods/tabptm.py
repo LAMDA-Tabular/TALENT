@@ -238,19 +238,19 @@ class TabPTMMethod(Method):
             elif distance_type == 'can':
                 distance_pos_c = self.canberra_dist(X, centers_c, self.mi)
 
-            if is_training:           
-                topk_pos = torch.topk(distance_pos_c, min(numK+1, centers_c.shape[0]), largest=False)[0]
-                topk_pos_labels = labels_c[torch.topk(distance_pos_c, min(numK + 1, centers_c.shape[0]), largest=False)[1]]
-                zero_mask = (topk_pos[:, 0] < 1e-6)
-                if zero_mask.any():
-                    topk_pos = torch.where(zero_mask[:, None].expand_as(topk_pos[:, 1:]), topk_pos[:, 1:1+numK], topk_pos[:, :numK])
-                    topk_pos_labels = torch.where(zero_mask[:, None].expand_as(topk_pos_labels[:, 1:]), topk_pos_labels[:, 1:1+numK], topk_pos_labels[:, :numK])
-                else:
-                    topk_pos = topk_pos[:, :numK]
-                    topk_pos_labels = topk_pos_labels[:, :numK]
-            else:
-                topk_pos = torch.topk(distance_pos_c, min(numK, centers_c.shape[0]), largest=False)[0]    
-                topk_pos_labels = labels_c[torch.topk(distance_pos_c, min(numK, centers_c.shape[0]), largest=False)[1]]
+            count = min(numK + int(is_training), centers_c.shape[0])
+            topk_pos, indices = torch.topk(distance_pos_c, count, largest=False)
+            if is_training:
+                if count < 2:
+                    raise ValueError("TabPTM regression training requires at least two centres")
+                # Exclude one matching centre for training queries. Repeat the last
+                # available neighbour when excluding the match leaves too few.
+                skip = (topk_pos[:, :1] < 1e-6).long()
+                positions = torch.arange(min(numK, count), device=X.device) + skip
+                positions = positions.clamp_max(count - 1)
+                topk_pos = topk_pos.gather(1, positions)
+                indices = indices.gather(1, positions)
+            topk_pos_labels = labels_c[indices]
 
             if topk_pos.shape[1] < numK:
                 num_diff = numK - topk_pos.shape[1]
@@ -365,7 +365,7 @@ class TabPTMMethod(Method):
             if self.is_regression:
                 X_meta = self.get_meta_feature_regression(X, y, is_training=True)
                 pred = self.model(X_meta)
-                loss = self.criterion(pred, y.to(torch.float64).squeeze())
+                loss = self.criterion(pred, y.to(pred.dtype).reshape_as(pred))
             else:
                 X_meta = self.get_meta_feature_allclass(X, y, is_training=True)
                 pred = self.model(X_meta)
