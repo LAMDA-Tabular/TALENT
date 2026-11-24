@@ -34,7 +34,7 @@ Quick examples
 
 The CLI scripts continue to work unchanged. Both surfaces go through the
 same `MethodSpec` registry, so adding a new method requires no changes to
-either layer beyond a registry entry.
+either dispatch layer. The adapter also needs its method configuration.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ import os.path as osp
 import json
 import time
 import tempfile
-from copy import deepcopy
+from copy import copy, deepcopy
 from numbers import Integral, Real
 import warnings
 from dataclasses import dataclass, field
@@ -438,8 +438,8 @@ def run(
         historical HPO objective (validation Accuracy for classification,
         MAE/RMSE for regression). See
         ``TALENT.model.lib.tuning_metric.supported_tune_metrics()``. Not
-        supported for methods that tune on an internal loss (``tabnet``,
-        ``ptarl``, ``tabcaps``).
+        supported for single-validation tuning with ``tabnet``, ``ptarl``
+        or ``tabcaps``, which use fixed validation metrics.
     measure : bool, default False
         Record per-seed wall times, observed device and context, checkpoint
         identity, and sampled process memory in `result.measurements`.
@@ -480,14 +480,14 @@ def run(
             raise ValueError(
                 f"Prebuilt args are for {args.model_type!r}, but run() requested {model_type!r}."
             )
+        args = copy(args)
+        args.config = deepcopy(config if config is not None else getattr(args, "config", {}))
         args.model_type = model_type
         for key, value in arg_overrides.items():
             setattr(args, key, value)
-        if config is not None or "n_bins" in arg_overrides:
-            args.config = deepcopy(config if config is not None else args.config)
-            if hasattr(args, "n_bins"):
-                section = "training" if spec.architecture == Architecture.DEEP else "fit"
-                args.config.setdefault(section, {})["n_bins"] = args.n_bins
+        if (config is not None or "n_bins" in arg_overrides) and hasattr(args, "n_bins"):
+            section = "training" if spec.architecture == Architecture.DEEP else "fit"
+            args.config.setdefault(section, {})["n_bins"] = args.n_bins
         if seed is not None:
             args.seed = seed
         if seed_num is not None:
@@ -511,7 +511,7 @@ def run(
     from TALENT.model.lib.tuning_metric import (
         validate_tune_metric, assert_tune_metric_supported,
     )
-    validate_tune_metric(args.tune_metric)
+    validate_tune_metric(args.tune_metric, is_regression=info.get('task_type') == 'regression')
 
     if args.tune and not spec.supports_hpo:
         raise ValueError(

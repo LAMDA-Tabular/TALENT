@@ -179,7 +179,7 @@ class TabPTMMethod(Method):
         test_label = torch.cat(test_label, 0)
         
         vl = self.criterion(test_logit, test_label).item()
-        vres, metric_name = self.metric(test_logit, test_label, self.y_info)
+        vres, metric_name = self._native_metric(test_logit, test_label, self.y_info)
 
         # Denormalize regression predictions back to original scale
         if self.is_regression and self.y_info.get('policy') == 'mean_std':
@@ -419,7 +419,7 @@ class TabPTMMethod(Method):
             task_type = 'classification'
             measure = np.greater_equal
 
-        vres, metric_name = self.metric(test_logit, test_label, self.y_info)
+        vres, metric_name = self._native_metric(test_logit, test_label, self.y_info)
             
         print('epoch {}, val, loss={:.4f} {} result={:.4f}'.format(epoch, vl, task_type, vres[0]))
         from TALENT.model.lib.tuning_metric import select_objective

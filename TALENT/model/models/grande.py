@@ -19,9 +19,10 @@ class GRANDE(nn.Module):
     def forward(self, inputs):
         training = self.training
 
-        if self.data_subset_fraction < 1.0 and training:
-            X_estimator = inputs[:, self.features_by_estimator]
-            X_estimator = X_estimator[self.data_select]
+        subset = self.data_subset_fraction < 1.0 and training
+        if subset:
+            rows = self.data_select.T.to(inputs.device)
+            X_estimator = inputs[rows.unsqueeze(-1), self.features_by_estimator.to(inputs.device)]
         else:
             X_estimator = inputs[:, self.features_by_estimator]
 
@@ -47,10 +48,28 @@ class GRANDE(nn.Module):
         p = torch.prod(((1 - self.path_identifier_list) * node_result_extended + self.path_identifier_list * (1 - node_result_extended)), dim=3)
 
         estimator_weights_leaf = torch.einsum("el,bel->be", self.estimator_weights, p)
-        estimator_weights_leaf_softmax = torch.nn.functional.softmax(estimator_weights_leaf, dim=-1)
+        if subset:
+            # Normalise across the estimators that sampled each original row.
+            flat_rows = rows.reshape(-1)
+            maxima = inputs.new_full((len(inputs),), -torch.inf, dtype=estimator_weights_leaf.dtype)
+            maxima.scatter_reduce_(0, flat_rows, estimator_weights_leaf.detach().reshape(-1), reduce="amax")
+            weights = (estimator_weights_leaf - maxima[rows]).exp()
+            totals = weights.new_zeros(len(inputs)).scatter_add_(0, flat_rows, weights.reshape(-1))
+            estimator_weights_leaf_softmax = weights / totals[rows]
+        else:
+            estimator_weights_leaf_softmax = torch.nn.functional.softmax(estimator_weights_leaf, dim=-1)
 
         if self.dropout > 0 and training:
-            estimator_weights_leaf_softmax = nn.functional.dropout(estimator_weights_leaf_softmax, p=self.dropout)
+            dropped = nn.functional.dropout(estimator_weights_leaf_softmax, p=self.dropout)
+            if self.task_type != 'regression' and not self.from_logits:
+                # A probability mixture needs unit mass even during dropout.
+                if subset:
+                    mass = dropped.new_zeros(len(inputs)).scatter_add_(0, flat_rows, dropped.reshape(-1))[rows]
+                else:
+                    mass = dropped.sum(dim=-1, keepdim=True)
+                dropped = torch.where(mass > 0, dropped / mass.clamp_min(torch.finfo(dropped.dtype).tiny),
+                                      estimator_weights_leaf_softmax)
+            estimator_weights_leaf_softmax = dropped
 
         if self.task_type == 'regression':
             layer_output = torch.einsum('el,bel->be', self.leaf_classes_array, p)
@@ -69,10 +88,8 @@ class GRANDE(nn.Module):
                 layer_output = torch.nn.functional.softmax(torch.einsum('elc,bel->bec', self.leaf_classes_array, p), dim=-1)
                 layer_output = torch.einsum('be,bec->bec', estimator_weights_leaf_softmax, layer_output)
 
-        if self.data_subset_fraction < 1.0 and training:
-            result = torch.zeros(inputs.shape[0], device=inputs.device)
-            result[self.data_select] = layer_output.transpose(0, 1)
-            result = (result / self.counts) * self.n_estimators
+        if subset:
+            result = layer_output.new_zeros(len(inputs)).scatter_add_(0, flat_rows, layer_output.reshape(-1))
         else:
             if self.task_type == 'regression' or self.task_type == 'binclass':
                 result = torch.einsum('be->b', layer_output)
@@ -94,14 +111,12 @@ class GRANDE(nn.Module):
         if self.task_type != 'binclass':
             self.data_subset_fraction = 1.0
         if self.data_subset_fraction < 1.0:
-            self.subset_size = int(self.batch_size * self.data_subset_fraction)
+            self.subset_size = max(1, int(self.batch_size * self.data_subset_fraction))
             if self.bootstrap:
                 self.data_select = torch.randint(0, self.batch_size, (self.n_estimators, self.subset_size))
             else:
                 indices = [np.random.choice(self.batch_size, size=self.subset_size, replace=False) for _ in range(self.n_estimators)]
                 self.data_select = torch.tensor(indices)
-
-            self.counts = torch.tensor(np.unique(self.data_select.numpy(), return_counts=True)[1], dtype=torch.float64)
 
         self.features_by_estimator = torch.tensor([np.random.choice(self.number_of_variables, size=self.selected_variables, replace=False) for _ in range(self.n_estimators)])
 
@@ -237,6 +252,4 @@ class GRANDE(nn.Module):
         X = self.encoder_loo.transform(X)
         X = self.encoder_ohe.transform(X)
 
-        X = self.normalizer.transform(X.values.astype(np.float64))
-
-        return X
+        return X.values.astype(np.float64)

@@ -17,7 +17,7 @@ TALENT offers the following deep learning models, specifically designed to enhan
 5. `TabCaps <https://openreview.net/pdf?id=OgbtSLESnI>`_ : A capsule network that encapsulates feature values into vectorial representations.
 6. `DCNv2 <https://arxiv.org/abs/2008.13535>`_: Combines an MLP module with a feature crossing module using linear layers and multiplications.
 7. `NODE <https://arxiv.org/abs/1909.06312>`_: Generalizes oblivious decision trees, blending gradient-based optimization and hierarchical representation learning.
-8. `GrowNet <https://arxiv.org/abs/2002.07971>`_ : A gradient boosting method utilizing shallow neural networks as weak learners.
+8. `GrowNet <https://arxiv.org/abs/2002.07971>`_ : A gradient boosting method using shallow neural networks. The historical classification objective compares scores with labels from other rows in the same batch. This affects the interpretation of classification results. Regression uses a separate objective.
 9. `TabNet <https://arxiv.org/abs/1908.07442>`_ : Sequential attention-based method for tabular data, enhancing feature selection and providing interpretability.
 10. `TabR <https://arxiv.org/abs/2307.14338>`_ : A model integrating KNN and attention mechanisms to improve prediction accuracy.
 11. `ModernNCA <https://arxiv.org/abs/2407.03257>`_ : Inspired by traditional NCA, this model makes predictions using relationships with neighbors in a learned embedding space.

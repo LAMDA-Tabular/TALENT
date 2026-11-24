@@ -79,7 +79,7 @@ Welcome to **TALENT**, a benchmark with a comprehensive machine learning toolbox
 
 ## 📰 What's New
 
-- [2026-11-24] Added [cross-validation](#cross-validation) with stratified, grouped and temporal folds, inner threshold selection, [fold-averaged Optuna objectives and resumable studies](#tuning-across-folds-and-resuming-a-run). Every run now records fit and prediction time. Added [replayable splits and matched comparisons](#reproducible-benchmarks) and five foundation model releases (Seldon, Seldon-mini, Inpriora, LimiX-2-1016 and TabDPT 1.3). Fixed binary metrics, preprocessing defaults, failed-trial handling, XGBoost tuning device selection, and TabAutoPNPNet tuning and single-feature-type inputs.
+- [2026-11] Added [cross-validation](#cross-validation) with stratified, grouped and temporal folds, inner threshold selection, [fold-averaged Optuna tuning and resumable studies](#tuning-across-folds-and-resuming-a-run). Added fit and prediction timing, [replayable splits and matched comparisons](#reproducible-benchmarks), and five foundation model releases (Seldon, Seldon-mini, Inpriora, LimiX-2-1016 and TabDPT 1.3). Fixed classification scoring, group ID handling, HPO metric and trial validation, and training or prediction errors in GRANDE, PTaRL, TabCaps, XGBoost and TabAutoPNPNet.
 
 - [2026-10]🌟 Add the September 2026 wave of tabular foundation models: **[TabPFN-3.5](https://github.com/PriorLabs/TabPFN)**, **[LimiX-2](https://github.com/limix-ldm-ai/LimiX)**, **[NVIDIA Kumo Tabular](https://github.com/NVIDIA/structured-data-models)**, **[Mitra-v2](https://arxiv.org/abs/2609.04540)**, **[Causilo](https://github.com/nums-ai/causilo)**, **[Xiaomi-TabLDM](https://github.com/xiaomi-research/xiaomi-tabldm)** and **[EXAONE-Tabular](https://github.com/LGAI-Research/EXAONE-Tabular)**. The new adapters document their weight sources and supported options; `tabpfn_v3` now pins the TabPFN-3 checkpoint (`tabpfn>=9.0` changed the package default to TabPFN-3.5).
 - [2026-08]🌟 Add **[TRC](https://arxiv.org/abs/2603.16569)** (TPAMI 2026), a post-hoc representation corrector that trains and freezes an FT-Transformer backbone before learning representation re-estimation and light-space mapping.
@@ -123,7 +123,7 @@ TALENT integrates an extensive array of 30+ deep learning architectures for tabu
 2. **ResNet**: A DNN that uses skip connections across many layers, which is implemented according to [RTDL](https://arxiv.org/abs/2106.11959).
 3. **[SNN](https://arxiv.org/abs/1706.02515)**: An MLP-like architecture utilizing the SELU activation, which facilitates the training of deeper neural networks.
 4. **[DANets](https://arxiv.org/abs/2112.02962)**: A neural network designed to enhance tabular data processing by grouping correlated features and reducing computational complexity.
-5. **[TabCaps](https://openreview.net/pdf?id=OgbtSLESnI)**: A capsule network that encapsulates all feature values of a record into vectorial features.
+5. **[TabCaps](https://openreview.net/pdf?id=OgbtSLESnI)**: A capsule network that encapsulates all feature values of a record into vectorial features. Its classifier returns probabilities. Prior versions applied softmax to those probabilities a second time in the public runner.
 6. **[DCNv2](https://arxiv.org/abs/2008.13535)**: Consists of an MLP-like module combined with a feature crossing module, which includes both linear layers and multiplications.
 7. **[NODE](https://arxiv.org/abs/1909.06312)**: A tree-mimic method that generalizes oblivious decision trees, combining gradient-based optimization with hierarchical representation learning.
 8. **[GrowNet](https://arxiv.org/abs/2002.07971)**: A gradient boosting framework that uses shallow neural networks as weak learners. In the historical classification training code, a broadcasting error pairs scores with labels from other rows in the same batch. This affects the interpretation of classification results. Regression uses a separate training objective.
@@ -137,7 +137,7 @@ TALENT integrates an extensive array of 30+ deep learning architectures for tabu
 16. **[FT-Transformer](https://arxiv.org/abs/2106.11959)**: A token-based method which transforms features to embeddings and applies a series of attention-based transformations to the embeddings.
 17. **[TANGOS](https://openreview.net/pdf?id=n6H86gW8u0d)**: A regularization-based method for tabular data that uses gradient attributions to encourage neuron specialization and orthogonalization.
 18. **[SwitchTab](https://arxiv.org/abs/2401.02013)**: A self-supervised method tailored for tabular data that improves representation learning through an asymmetric encoder-decoder framework. Following the original paper, our toolkit uses a supervised learning form, optimizing both reconstruction and supervised loss in each epoch.
-19. **[PTaRL](https://openreview.net/pdf?id=G32oY4Vnm8)**: A regularization-based framework that enhances prediction by constructing and projecting into a prototype-based space.
+19. **[PTaRL](https://openreview.net/pdf?id=G32oY4Vnm8)**: A regularization-based framework that enhances prediction by constructing and projecting into a prototype-based space. New Optuna trials enable the configured regularizers. Earlier tuned configurations could disable them by storing their flags as strings.
 20. **[TabPFN](https://arxiv.org/abs/2207.01848)**: A general model which involves the use of pre-trained deep neural networks that can be directly applied to any tabular task.
 21. **[HyperFast](https://arxiv.org/abs/2402.14335)**: A meta-trained hypernetwork that generates task-specific neural networks for instant classification of tabular data.
 22. **[TabPTM](https://arxiv.org/abs/2311.00055)**: A general method for tabular data that standardizes heterogeneous datasets using meta-representations, allowing a pre-trained model to generalize to unseen datasets without additional training.
@@ -184,7 +184,7 @@ TALENT integrates an extensive array of 30+ deep learning architectures for tabu
 Install with the newest version through GitHub:
 
 ```bash
-$ pip install git+https://github.com/LAMDA-Tabular/TALENT.git@main --upgrade
+python -m pip install --upgrade git+https://github.com/LAMDA-Tabular/TALENT.git@main
 ```
 
 From a source checkout, the CLI scripts live in `test/` and sample data in `example_datasets/`. The deep-learning launcher follows this workflow:
@@ -404,7 +404,7 @@ use an internal objective for single-validation HPO. With `hpo_cv`, outer
 candidate selection can use a reported metric while those methods retain
 their own early-stopping criteria.
 
-Native CV checks that the requested HPO metric applies to the task. For AUC it requires every class in each model-selection validation fold. For R2 it requires at least two validation rows. This is especially relevant for small grouped or chronological folds.
+Tuning checks that the requested metric applies to the task. In native CV, AUC requires every class and R2 requires at least two rows in each validation partition and each held-out HPO scoring fold. Check these conditions when using small groups or short time windows.
 
 Introspect or filter methods via the unified registry:
 
@@ -413,7 +413,7 @@ Introspect or filter methods via the unified registry:
 spec = TALENT.get_method_spec("tabicl_v2")
 print(spec.cat_policy, spec.normalization, spec.supports_regression, spec.supports_hpo)
 
-# List all GPU-only deep methods that support regression
+# List deep methods registered with the GPU hardware category that support regression
 for s in TALENT.list_methods(
     architecture=TALENT.Architecture.DEEP,
     hardware=TALENT.Hardware.GPU,
@@ -482,11 +482,13 @@ See our [Contribution Guide](CONTRIBUTING.md) for more details.
 ```
 
 
-If you want to use **TabR**, you have to manually install faiss, which is only available on **conda**:
+**TabR** uses FAISS for nearest-neighbour search. Install a GPU-enabled build for CUDA runs:
 
 ```bash
 conda install faiss-gpu -c pytorch
 ```
+
+For CPU runs, install `faiss-cpu` and pass `device="cpu"` to the Python API.
 
 ## 🗂️ Benchmark Datasets
 
@@ -494,7 +496,7 @@ Datasets are available at [Google Drive](https://drive.google.com/drive/folders/
 
 ### 📂 How to Place Datasets
 
-Datasets are placed in the project's current directory, corresponding to the file name specified by `args.dataset_path`. For instance, if the project is `LAMDA-TALENT`, the data should be placed in `LAMDA-TALENT/args.dataset_path/args.dataset`.
+TALENT loads each dataset from `<dataset_path>/<dataset>`. The dataset path can be absolute or relative to your working directory. For example, from the checkout root, `--dataset_path example_datasets --dataset bank` loads `example_datasets/bank`.
 
 Each dataset folder `args.dataset` consists of:
 

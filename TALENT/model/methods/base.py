@@ -301,7 +301,7 @@ class Method(object, metaclass=abc.ABCMeta):
         test_label = torch.cat(test_label, 0)
         
         vl = self.criterion(test_logit, test_label).item()     
-        vres, metric_name = self.metric(test_logit, test_label, self.y_info)
+        vres, metric_name = self._native_metric(test_logit, test_label, self.y_info)
 
         # Denormalize regression predictions back to original scale for return value
         if self.is_regression and self.y_info.get('policy') == 'mean_std':
@@ -385,7 +385,7 @@ class Method(object, metaclass=abc.ABCMeta):
             task_type = 'classification'
             measure = np.greater_equal
 
-        vres, metric_name = self.metric(test_logit, test_label, self.y_info)
+        vres, metric_name = self._native_metric(test_logit, test_label, self.y_info)
 
         print('epoch {}, val, loss={:.4f} {} result={:.4f}'.format(epoch, vl, task_type, vres[0]))
         from TALENT.model.lib.tuning_metric import select_objective
@@ -406,11 +406,26 @@ class Method(object, metaclass=abc.ABCMeta):
         torch.save(self.trlog, osp.join(self.args.save_path, 'trlog'))   
 
 
+    def _native_metric(self, predictions, labels, y_info):
+        """Score the adapter's raw outputs, even when logits happen to sum to one."""
+        if not self.is_regression:
+            from TALENT.model.lib.evaluation import standardize_predict_proba
+            from TALENT.model.method_registry import METHOD_REGISTRY
+
+            spec = METHOD_REGISTRY.get(getattr(self.args, "model_type", None))
+            if spec is not None:
+                probabilities = standardize_predict_proba(predictions, spec.output_type, False)
+                if probabilities is not None:
+                    predictions = probabilities
+        return self.metric(predictions, labels, y_info)
+
     def metric(self, predictions, labels, y_info, threshold=None):
         """
         Compute the evaluation metric.
 
-        :param predictions: np.ndarray, predictions
+        :param predictions: Predictions to score. A classification probability
+            matrix can be supplied directly. Adapters use ``_native_metric``
+            to interpret raw scores according to their registered output type.
         :param labels: np.ndarray, labels
         :param y_info: dict, information about the labels
         :param threshold: float or None. If given **and** the task is binary
@@ -436,7 +451,6 @@ class Method(object, metaclass=abc.ABCMeta):
                 rmse *= y_info['std']
             return (mae, r2, rmse), ("MAE", "R2", "RMSE")
         elif self.is_binclass:
-            # If not already in [0,1] summing to 1, convert.
             predictions = check_softmax(predictions, model_type=getattr(self.args, "model_type", None))
             # Hard predictions: prefer the user-supplied threshold; else argmax.
             if threshold is not None:
@@ -458,8 +472,7 @@ class Method(object, metaclass=abc.ABCMeta):
                 ("Accuracy", "Avg_Recall", "Avg_Precision", "F1", "LogLoss", "AUC", "Brier", "ECE"),
             )
         elif self.is_multiclass:
-            # if not softmax, convert to probabilities
-            predictions = check_softmax(predictions)
+            predictions = check_softmax(predictions, model_type=getattr(self.args, "model_type", None))
             hard_preds = predictions.argmax(axis=-1)
             accuracy = skm.accuracy_score(labels, hard_preds)
             avg_recall = skm.balanced_accuracy_score(labels, hard_preds)

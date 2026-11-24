@@ -166,7 +166,7 @@ class classical_methods(object, metaclass=abc.ABCMeta):
                 ("Accuracy", "Avg_Recall", "Avg_Precision", "F1", "LogLoss", "AUC", "Brier", "ECE"),
             )
         elif self.is_multiclass:
-            predictions = check_softmax(predictions)
+            predictions = check_softmax(predictions, model_type=getattr(self.args, "model_type", None))
             hard_preds = predictions.argmax(axis=-1)
             accuracy = skm.accuracy_score(labels, hard_preds)
             avg_recall = skm.balanced_accuracy_score(labels, hard_preds)

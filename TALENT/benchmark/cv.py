@@ -10,7 +10,7 @@ from time import perf_counter
 
 import numpy as np
 
-from .splits import BenchmarkSplit, _ids, _unit_codes
+from .splits import BenchmarkSplit, _ids, _unit_codes, _unit_index
 from .checkpoint import load_result, run_directory, run_identity, save_result
 
 
@@ -159,8 +159,8 @@ def cross_validate(method, row_ids, N, C, y, info, *, cv=5, split_seed=0, val_fr
             raise ValueError("threshold_cv requires binary probability predictions and threshold tuning")
 
     positions = {key: i for i, key in enumerate(ids)}
-    groups = None if groups is None else np.asarray(groups)
-    timestamps = None if timestamps is None else np.asarray(timestamps)
+    groups = None if groups is None else _unit_index(groups).to_numpy()
+    timestamps = None if timestamps is None else _unit_index(timestamps).to_numpy()
 
     def plan(indices, count):
         return make_folds(
@@ -202,10 +202,7 @@ def cross_validate(method, row_ids, N, C, y, info, *, cv=5, split_seed=0, val_fr
     if resume_dir is not None and split_seed is None and timestamps is None:
         raise ValueError("resumable shuffled CV requires a fixed split_seed")
     metric = options.get("tune_metric") or getattr(args, "tune_metric", None)
-    objective = validate_tune_metric(metric) if tune else None
-    regression_metric = objective in ("MAE", "RMSE", "R2")
-    if objective and regression_metric != (info["task_type"] == "regression"):
-        raise ValueError(f"HPO metric {objective} is unavailable for {info['task_type']}")
+    objective = validate_tune_metric(metric, is_regression=not classification) if tune else None
 
     classes = np.unique(labels) if classification else None
     if info["task_type"] == "binclass" and len(classes) != 2:

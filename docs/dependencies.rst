@@ -21,7 +21,7 @@ Optional Dependencies
 
 Some methods in TALENT require additional dependencies for specific tasks. If you intend to use the following methods, make sure to install these optional packages:
 
-- `faiss-gpu <https://github.com/facebookresearch/faiss>`_ : Required for **TabR** to efficiently handle nearest neighbor searches. Install via conda:
+- `Faiss <https://github.com/facebookresearch/faiss>`_ is required for **TabR**. Use a CPU build for CPU runs (``pip install faiss-cpu``) or install a compatible GPU build for CUDA, for example:
    
    .. code-block:: bash
 

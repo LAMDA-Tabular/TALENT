@@ -128,10 +128,17 @@ class BenchmarkSplit:
         return result
 
 
+def _unit_index(values):
+    from pandas import Index
+
+    # A tuple can identify one group, just as a string or integer can.
+    return Index(values, tupleize_cols=False)
+
+
 def _unit_codes(values, n_rows, temporal):
     import pandas as pd
 
-    values = pd.Index(values)
+    values = _unit_index(values)
     if len(values) != n_rows or values.hasnans:
         raise ValueError("supply one nonmissing group or timestamp per row")
     if temporal:

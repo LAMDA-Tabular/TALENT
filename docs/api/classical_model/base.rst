@@ -75,11 +75,8 @@ This section contains the abstract base class that defines the interface for all
       * **train** (*bool, default=True*) -- Whether to train the model or just load from checkpoint
       * **config** (*dict, optional*) -- Additional configuration parameters
       
-      **Returns:**
-      
-      * **time_cost** (*float*) -- Training time in seconds
-      
-      **Abstract Method:** Must be implemented by subclasses.
+      The base implementation prepares the input data and calls ``construct_model``.
+      Concrete adapters then fit their estimator.
 
    .. method:: reset_stats_withconfig(config)
       :noindex:
@@ -90,7 +87,7 @@ This section contains the abstract base class that defines the interface for all
       
       * **config** (*dict*) -- Configuration parameters
 
-   .. method:: metric(predictions, labels, y_info)
+   .. method:: metric(predictions, labels, y_info, threshold=None)
       :noindex:
       
       Calculate evaluation metrics.
@@ -109,7 +106,7 @@ This section contains the abstract base class that defines the interface for all
       **Metrics:**
       
       - For regression: returns MAE, R2, RMSE metrics
-      - For classification: returns Accuracy, Avg_Precision, Avg_Recall, F1 metrics
+      - For classification: returns Accuracy, Avg_Recall, Avg_Precision, F1, LogLoss, AUC, Brier and ECE
 
 **References:**
 

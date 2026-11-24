@@ -262,7 +262,7 @@ class TabCapsModel(BaseEstimator):
         """
         self.input_dim = input_dim
         self.output_dim = output_dim
-        load_model = torch.load(filepath, weights_only=False)
+        load_model = torch.load(filepath, weights_only=False, map_location=self.device)
         self.network = load_model['model']
 
         self.network.eval()
@@ -433,7 +433,8 @@ class TabCapsModel(BaseEstimator):
             if self.decode else CapsuleClassifier(self.input_dim, self.output_dim, **self.params)
         self.recon_metric = accuracy_score
 
-        if len(self.device_id) > 1:
+        device_ids = self.device_id.split(",") if isinstance(self.device_id, str) else self.device_id
+        if self.device.type == "cuda" and device_ids is not None and len(device_ids) > 1:
             self.network = DataParallel(self.network)
         self.network = self.network.to(self.device)
 

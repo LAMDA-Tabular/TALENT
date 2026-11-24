@@ -185,10 +185,10 @@ Core Method Class
       * Compute validation metrics
       * Check for improvement
       * Save best model if improved
-      * Implement early stopping (20 epochs without improvement)
+      * Implement early stopping (more than 20 epochs without improvement)
       * Save training log
    
-   .. method:: metric(predictions, labels, y_info)
+   .. method:: metric(predictions, labels, y_info, threshold=None)
       :noindex:
       
       Compute evaluation metrics based on task type.

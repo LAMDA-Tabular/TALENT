@@ -75,17 +75,17 @@ python -m pip install -e .
 ```
 
 ### Running Experiments
-1. Edit configuration files:
+1. To override the default settings for a method, edit its configuration files:
    - `TALENT/configs/default/[MODEL_NAME].json`
    - `TALENT/configs/opt_space/[MODEL_NAME].json`
 
 2. Run:
 ```bash
 # For deep methods
-python test/train_model_deep.py --model_type MODEL_NAME
+python test/train_model_deep.py --model_type mlp --dataset bank --dataset_path example_datasets --seed_num 1 --max_epoch 1
 
 # For classical methods
-python test/train_model_classical.py --model_type MODEL_NAME
+python test/train_model_classical.py --model_type LogReg --dataset bank --dataset_path example_datasets --seed_num 1
 ```
 
 ### Building the documentation

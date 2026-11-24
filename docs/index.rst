@@ -47,7 +47,7 @@ What's New
 
 Here are the recent updates to **TALENT**:
 
-- [2026-11] Added Inpriora, Seldon, Seldon-mini, LimiX-2-1016 and TabDPT 1.3. See :doc:`methods` and :doc:`dependencies`.
+- [2026-11] Added replayable splits, matched comparisons, fit and prediction timing, grouped and temporal cross-validation, out-of-fold threshold selection, fold-averaged Optuna tuning and resumable studies. See :doc:`api/core`. New releases include Inpriora, Seldon, Seldon-mini, LimiX-2-1016 and TabDPT 1.3. See :doc:`methods` and :doc:`dependencies`.
 
 - [2026-10]🌟 Add the September 2026 wave of tabular foundation models: `TabPFN-3.5 <https://github.com/PriorLabs/TabPFN>`_, `LimiX-2 <https://github.com/limix-ldm-ai/LimiX>`_, `NVIDIA Kumo Tabular <https://github.com/NVIDIA/structured-data-models>`_, `Mitra-v2 <https://arxiv.org/abs/2609.04540>`_, `Causilo <https://github.com/nums-ai/causilo>`_, `Xiaomi-TabLDM <https://github.com/xiaomi-research/xiaomi-tabldm>`_ and `EXAONE-Tabular <https://github.com/LGAI-Research/EXAONE-Tabular>`_.
 

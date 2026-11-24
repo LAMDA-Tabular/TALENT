@@ -90,7 +90,7 @@ This section contains the LightGBM implementation for classification and regress
       
       **Returns:**
       
-      * **test_logit** (*array-like*) -- Test predictions (probabilities for classification, values for regression)
+      A tuple ``(metric_values, metric_names, predictions)``. The predictions contain class probabilities or regression values in the original target units.
       
       **Prediction Process:**
       
@@ -102,7 +102,7 @@ This section contains the LightGBM implementation for classification and regress
 **Evaluation Metrics:**
 
 - **For regression:** returns MAE, R2, RMSE metrics
-- **For classification:** returns Accuracy, Avg_Precision, Avg_Recall, F1 metrics
+- **For classification:** returns Accuracy, Avg_Recall, Avg_Precision, F1, LogLoss, AUC, Brier and ECE
 
 **References:**
 

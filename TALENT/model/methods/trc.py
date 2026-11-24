@@ -334,7 +334,7 @@ class TRCMethod(Method):
         logits = torch.cat(logits)
         labels = torch.cat(labels)
         val_loss = self.criterion(logits, labels).item()
-        metrics, names = self.metric(logits, labels, self.y_info)
+        metrics, names = self._native_metric(logits, labels, self.y_info)
         score, _ = select_objective(metrics, names, self.args, self.is_regression)
         return val_loss, score
 

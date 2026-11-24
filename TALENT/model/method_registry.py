@@ -338,7 +338,7 @@ _METHODS_DEEP = [
     _spec("node", "TALENT.model.methods.node", "NodeMethod",
           _DEEP, _GPU, _LOGITS, cat_policy=_ALL_CAT_POLICIES),
     _spec("tabcaps", "TALENT.model.methods.tabcaps", "TabCapsMethod",
-          _DEEP, _GPU, _LOGITS, cat_policy=_ALL_CAT_POLICIES,
+          _DEEP, _GPU, _PROBS, cat_policy=_ALL_CAT_POLICIES,
           supports_regression=False),
     _spec("tabnet", "TALENT.model.methods.tabnet", "TabNetMethod",
           _DEEP, _GPU, _PROBS, cat_policy=_ALL_CAT_POLICIES,

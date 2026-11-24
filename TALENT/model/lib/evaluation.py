@@ -188,19 +188,22 @@ def evaluate(
             f"{type(method).__name__!r}"
         )
 
-    # Snapshot the test-time state -- a second predict() call below would
-    # overwrite ``method.y_test`` and ``method.predict_time``.
     test_labels = method.y_test if hasattr(method, "y_test") else None
     y_info = method.y_info if hasattr(method, "y_info") else None
-    test_predict_time = getattr(method, "predict_time", None)
+    test_proba = standardize_predict_proba(test_predictions, output_type, is_regression)
 
     # ------ 2. Tune threshold on the validation set ---------------------------
     threshold: Optional[float] = None
 
     if decision_threshold is not None:
         threshold = decision_threshold
-        vres, metric_names = method.metric(test_predictions, test_labels, y_info, threshold=threshold)
+        scores = test_predictions if test_proba is None else test_proba
+        vres, metric_names = method.metric(scores, test_labels, y_info, threshold=threshold)
     elif is_binclass and tune_threshold:
+        # Adapters replace their query arrays and loader on each predict call.
+        test_state = {name: getattr(method, name)
+                      for name in ("N_test", "C_test", "y_test", "test_loader", "predict_time")
+                      if hasattr(method, name)}
         try:
             val_data = _val_as_test(train_val_data)
             val_result = method.predict(val_data, info, model_name=model_name)
@@ -221,7 +224,7 @@ def evaluate(
 
                 # Recompute the test-set metrics using the tuned threshold.
                 vres, metric_names = method.metric(
-                    test_predictions, test_labels, y_info, threshold=threshold
+                    test_proba, test_labels, y_info, threshold=threshold
                 )
         except Exception as exc:  # pragma: no cover -- defensive fallback
             warnings.warn(
@@ -229,14 +232,11 @@ def evaluate(
                 f"falling back to argmax metrics."
             )
             threshold = None
-
-    if test_predict_time is not None:
-        method.predict_time = test_predict_time
+        finally:
+            for name, value in test_state.items():
+                setattr(method, name, value)
 
     # ------ 3. Build predict_proba / predict_labels --------------------------
-    test_proba = standardize_predict_proba(
-        test_predictions, output_type, is_regression=is_regression
-    )
     predict_labels: Optional[np.ndarray] = None
     if test_proba is not None:
         if is_binclass and threshold is not None:

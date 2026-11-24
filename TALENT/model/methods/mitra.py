@@ -208,7 +208,7 @@ class MitraMethod(Method):
         test_label_tensor = torch.tensor(test_label, dtype=torch.float32 if self.is_regression else torch.long)
         
         vl = self.criterion(test_logit, test_label_tensor).item()
-        vres, metric_name = self.metric(test_logit, test_label, self.y_info)
+        vres, metric_name = self._native_metric(test_logit, test_label, self.y_info)
         
         # Denormalize regression predictions back to original scale
         if self.is_regression and self.y_info.get('policy') == 'mean_std':

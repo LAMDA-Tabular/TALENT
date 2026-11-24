@@ -17,19 +17,19 @@ def check_softmax(logits, *, model_type=None):
     Convert classification scores to a probability matrix for metric calculation.
 
     :param logits: An (N, C) matrix, or one score per row for a binary task.
-        Matrices with probability rows are kept as supplied. For binary vectors
-        and single-column matrices, the registered output type determines
-        whether the score is a probability or a logit.
-    :param model_type: Optional method ID. Without an ID, binary scores are logits.
+        A matrix of probabilities may also be supplied directly.
+    :param model_type: Optional method ID used to interpret a binary vector
+        and to normalise outputs from probability-based methods.
     :return: np.ndarray of shape (N, C) with probabilities
     """
-    if logits.ndim == 1 or (logits.ndim == 2 and logits.shape[1] == 1):
-        from TALENT.model.lib.evaluation import standardize_predict_proba
-        from TALENT.model.method_registry import METHOD_REGISTRY, OutputType
+    from TALENT.model.lib.evaluation import standardize_predict_proba
+    from TALENT.model.method_registry import METHOD_REGISTRY, OutputType
 
-        spec = METHOD_REGISTRY.get(model_type)
-        output_type = spec.output_type if spec is not None else OutputType.LOGITS
-        return standardize_predict_proba(logits, output_type, is_regression=False)
+    spec = METHOD_REGISTRY.get(model_type)
+    if spec is not None and spec.output_type == OutputType.PROBABILITIES:
+        return standardize_predict_proba(logits, spec.output_type, is_regression=False)
+    if logits.ndim == 1 or (logits.ndim == 2 and logits.shape[1] == 1):
+        return standardize_predict_proba(logits, OutputType.LOGITS, is_regression=False)
 
     if np.any((logits < 0) | (logits > 1)) or (not np.allclose(logits.sum(axis=-1), 1, atol=1e-5)):
         exps = np.exp(logits - np.max(logits, axis=1, keepdims=True))  # stabilize by subtracting max
@@ -640,7 +640,7 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info, *, score_candid
     )
     # Validate here as well so the CLI path fails fast on a typo (the Python
     # API already validates before calling this function).
-    validate_tune_metric(resolve_tune_metric(args))
+    validate_tune_metric(resolve_tune_metric(args), is_regression=info['task_type'] == 'regression')
     if score_candidate is None:
         assert_tune_metric_supported(args.model_type, args)
     # The tuned config depends on the objective, so a metric-specific search
@@ -728,8 +728,8 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info, *, score_candid
 
         if args.model_type in ['ptarl']:
             config['model']['n_clusters'] = 20
-            config['model']["regularize"] = "True"
-            config['general']["diversity"] = "True"
+            config['model']["regularize"] = True
+            config['general']["diversity"] = True
             config['general']["ot_weight"] = 0.25
             config['general']["diversity_weight"] = 0.25
             config['general']["r_weight"] = 0.25

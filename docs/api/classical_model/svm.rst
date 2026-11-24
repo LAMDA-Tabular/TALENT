@@ -4,21 +4,21 @@ Support Vector Machine
 
 Support Vector Machine classical method implementation.
 
-This section contains the Support Vector Machine (SVM) implementation for classification tasks. SVM is a supervised learning algorithm that finds a hyperplane to separate data points of different classes with maximum margin.
+This section contains the Support Vector Machine (SVM) implementation for classification and regression.
 
 .. automodule:: TALENT.model.classical_methods.svm
    :members:
    :undoc-members:
    :show-inheritance:
 
-.. class:: SVMMethod
+.. class:: SvmMethod
    :noindex:
 
-   Support Vector Machine method for classification tasks.
+   Linear support vector classifier or regressor.
    
    **Key Features:**
    
-   - Uses sklearn's SVC for classification
+   - Uses LinearSVC with three-fold sigmoid calibration for classification and LinearSVR for regression
    - Finds optimal hyperplane for class separation
    - Supports both binary and multiclass classification
    - Automatically handles data preprocessing including normalization and encoding
@@ -27,7 +27,7 @@ This section contains the Support Vector Machine (SVM) implementation for classi
    
    **Algorithm:**
    
-   SVM is a supervised learning algorithm that finds a hyperplane to separate data points of different classes with maximum margin. It can handle both linear and non-linear classification using kernel functions.
+   SVM is a supervised learning algorithm that finds a hyperplane to separate data points of different classes with maximum margin. The TALENT adapter uses a linear kernel.
 
    .. method:: __init__(args, is_regression)
       :noindex:
@@ -50,8 +50,8 @@ This section contains the Support Vector Machine (SVM) implementation for classi
       
       **Model Creation:**
       
-      - Creates `SVC` classifier
-      - Configures parameters like kernel, C, gamma, etc.
+      - Creates a calibrated LinearSVC or a LinearSVR
+      - Passes the configured parameters to the underlying linear estimator.
 
    .. method:: fit(data, info, train=True, config=None)
       :noindex:
@@ -88,18 +88,19 @@ This section contains the Support Vector Machine (SVM) implementation for classi
       
       **Returns:**
       
-      * **test_logit** (*array-like*) -- Test predictions (probabilities for classification)
+      A tuple ``(metric_values, metric_names, predictions)``. The predictions contain class probabilities or regression values in the original target units.
       
       **Prediction Process:**
       
       1. **Data Preprocessing:** Applies same preprocessing as training data
       2. **Model Loading:** Loads the trained SVM model
       3. **Prediction:** Generates probability predictions
-      4. **Output:** Returns probabilities for classification
+      4. **Output:** Returns class probabilities or predicted target values
 
 **Evaluation Metrics:**
 
-- **For classification:** returns Accuracy, Avg_Precision, Avg_Recall, F1 metrics
+- **For regression:** returns MAE, R2 and RMSE
+- **For classification:** returns Accuracy, Avg_Recall, Avg_Precision, F1, LogLoss, AUC, Brier and ECE
 
 **References:**
 
