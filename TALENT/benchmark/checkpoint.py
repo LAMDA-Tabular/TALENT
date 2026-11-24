@@ -22,6 +22,7 @@ def run_identity(spec, data, protocol, options, root):
     args = options.pop("args", None)
     defaults = dict(vars(args)) if args is not None else {}
     defaults.pop("save_path", None)  # Each fit gets its own directory under the run root.
+    defaults.pop("hpo_time", None)  # Elapsed time on a previously tuned namespace is an output.
     effective = {**defaults, **options}
     config = options.get("config")
     if config is None:

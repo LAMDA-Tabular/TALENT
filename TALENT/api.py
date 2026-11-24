@@ -84,6 +84,8 @@ class RunResult:
     ``fit_time`` and ``predict_time`` are elapsed seconds for the adapter's
     full fit and test prediction calls, averaged across seeds. Tuning and
     the evaluator's separate validation prediction are excluded.
+    ``hpo_time`` is the wall time of the shared Optuna search in seconds.
+    It is zero when the run skips tuning or reuses a tuned configuration.
 
     Notes on the prediction-related fields:
 
@@ -125,10 +127,11 @@ class RunResult:
     config: Dict[str, Any] = field(default_factory=dict)
     save_path: Optional[str] = None
 
-    # Runtime identity for the final seed; to_dict() keeps its historical schema.
+    # Runtime identity for the final seed.
     provenance: Dict[str, Any] = field(default_factory=dict)
     measurements: Dict[str, Any] = field(default_factory=dict)
     split_id: Optional[str] = None
+    hpo_time: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Return a JSON-safe summary (predictions excluded)."""
@@ -141,6 +144,7 @@ class RunResult:
             "metrics_mean": dict(zip(self.metric_names, [float(x) for x in self.metrics_mean])) if self.metrics_mean else {},
             "metrics_std": dict(zip(self.metric_names, [float(x) for x in self.metrics_std])) if self.metrics_std else {},
             "fit_time": float(self.fit_time),
+            "hpo_time": self.hpo_time,
             "predict_time": float(self.predict_time),
             "threshold": float(self.threshold) if self.threshold is not None else None,
             "save_path": self.save_path,
@@ -664,6 +668,7 @@ def run(
         metric_names=last_metric_names,
         fit_time=float(np.mean(fit_times)) if fit_times else 0.0,
         predict_time=float(np.mean(predict_times)) if predict_times else 0.0,
+        hpo_time=args.hpo_time if args.tune else 0.0,
         loss_mean=loss_mean,
         loss_std=loss_std,
         metrics_mean=m_mean,

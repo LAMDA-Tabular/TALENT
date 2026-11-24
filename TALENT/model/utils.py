@@ -539,6 +539,9 @@ def show_results_classical(args, info, metric_name, results_list, time_list):
 
     # Printing results
     print(f'{args.model_type}: {args.seed_num} Trials')
+    hpo_time = getattr(args, "hpo_time", None) if getattr(args, "tune", False) else 0.0
+    if hpo_time is not None:
+        print(f"HPO_Time = {hpo_time:.8f} s")
     for name in metric_name:
         if info['task_type'] == 'regression' and name != 'Time':
             formatted_results = ', '.join(['{:.8e}'.format(e) for e in metric_arrays[name]])
@@ -594,6 +597,9 @@ def show_results(args, info, metric_name, loss_list, results_list, time_list):
 
     # Printing results
     print(f'{args.model_type}: {args.seed_num} Trials')
+    hpo_time = getattr(args, "hpo_time", None) if getattr(args, "tune", False) else 0.0
+    if hpo_time is not None:
+        print(f"HPO_Time = {hpo_time:.8f} s")
     for name in metric_name:
         if info['task_type'] == 'regression' and not name.endswith('Time'):
             formatted_results = ', '.join(['{:.8e}'.format(e) for e in metric_arrays[name]])
@@ -635,6 +641,8 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info, *, score_candid
     import optuna
     import optuna.samplers
     import optuna.trial
+    from TALENT.benchmark.study import run_trials
+    args.hpo_time = 0.0
     from TALENT.model.lib.tuning_metric import (
         validate_tune_metric, assert_tune_metric_supported, resolve_tune_metric,
     )
@@ -832,8 +840,8 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info, *, score_candid
             direction=direction,
             sampler=optuna.samplers.TPESampler(seed=0),
         )
-        study.optimize(
-            objective,
+        run_trials(
+            study, objective, args,
             n_trials=args.n_trials, catch=(Exception,),
             show_progress_bar=True,
         )

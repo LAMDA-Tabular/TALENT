@@ -50,8 +50,12 @@ results and save each fit's Optuna study in SQLite. Rerunning the same
 protocol there reuses completed work. ``resume_key`` can identify external
 model revisions.
 
-Every run reports elapsed fit and test prediction time. Set ``measure=True``
-to add memory, tuning time and backend information.
+Every run reports ``fit_time``, ``hpo_time`` and ``predict_time`` in seconds.
+Fit and prediction times are means across seeds. HPO time counts the shared
+Optuna search once and is zero when tuning is disabled or a saved configuration
+is reused. A CV result's ``hpo_time`` totals its outer and threshold-fold searches,
+including recoverable trial time from interrupted studies. Set ``measure=True``
+to add memory, tuning-call overhead and backend information.
 
 Method infrastructure
 ---------------------

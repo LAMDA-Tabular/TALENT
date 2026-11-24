@@ -25,7 +25,8 @@ def result_record(result, dataset, metric, *, split_id=None):
         values = [s.get(key) for s in seeds]
         cost[key] = mean(values) if values and all(v is not None for v in values) else None
     return {"dataset": dataset, "split_id": split_id, "method": result.method_type,
-            "status": "ok", "metric": metric, "score": float(scores[metric]), **cost}
+            "status": "ok", "metric": metric, "score": float(scores[metric]),
+            "hpo_seconds": getattr(result, "hpo_time", None), **cost}
 
 
 def _names(values, label):
@@ -111,7 +112,7 @@ def compare_runs(records, *, expected, methods, metric, reference,
         quality = _dataset_means({cell: success[method][cell] for cell in common})
         row = {"method": method, "score": mean(quality.values()) if quality else None,
                "datasets": len(quality), "splits": len(common), "rank": None}
-        for field in ("fit_seconds", "predict_seconds_per_1000"):
+        for field in ("fit_seconds", "hpo_seconds", "predict_seconds_per_1000"):
             measured = {}
             for cell in common:
                 value = _finite_number(index[cell, method][1].get(field))

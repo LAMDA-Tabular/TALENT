@@ -9,6 +9,15 @@ from tempfile import TemporaryDirectory
 import optuna
 from optuna.trial import TrialState
 
+from .measurement import elapsed_call
+
+
+def run_trials(study, objective, args, **options):
+    """Time the Optuna search once, including candidate fits and scoring."""
+    _, args.hpo_time = elapsed_call(
+        "hpo_seconds", getattr(args, "device", None), study.optimize, objective, **options
+    )
+
 
 def optimize_candidates(args, info, train_val, direction, sample_config, score_candidate, persist, recovery):
     """Keep the resolved configuration and the individual scores with each trial."""
@@ -65,7 +74,7 @@ def optimize_candidates(args, info, train_val, direction, sample_config, score_c
                 raise
 
         if budget > used:
-            study.optimize(objective, n_trials=budget - used, catch=(Exception,))
+            run_trials(study, objective, args, n_trials=budget - used, catch=(Exception,))
         if not study.get_trials(deepcopy=False, states=(TrialState.COMPLETE,)):
             failures = study.get_trials(deepcopy=False, states=(TrialState.FAIL,))
             reason = failures[-1].user_attrs.get("error", "interrupted trial") if failures else "no trials"

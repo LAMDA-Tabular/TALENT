@@ -94,6 +94,12 @@ class CrossValidationResult:
     hpo_splits: dict = field(default_factory=dict)
 
     @property
+    def hpo_time(self):
+        """Total HPO seconds across all outer folds and their threshold fits."""
+        times = [result.hpo_time for result in self.results]
+        return sum(times) if all(value is not None for value in times) else None
+
+    @property
     def metrics_mean(self):
         """Equal-fold means of the seed-averaged metrics. Undefined values propagate."""
         scores = np.mean([result.metrics_mean for result in self.results], axis=0)
@@ -252,6 +258,8 @@ def cross_validate(method, row_ids, N, C, y, info, *, cv=5, split_seed=0, val_fr
         result = split.run(method, ids, N, C, labels, info, save_path=str(directory),
                            allow_extra_rows=True, **kwargs)
         previous = recovery.get("trial_seconds", 0.0)
+        if previous:
+            result.hpo_time += previous
         if result.measurements and persistent and tune:
             result.measurements["recovered_trial_seconds"] = previous
         return result, previous
@@ -276,6 +284,7 @@ def _evaluate_folds(root, folds, nested, fit, persistent, labels, positions, cla
             fold_seconds.append(seconds)
             continue
         recovered_seconds = 0.0
+        threshold_hpo_time = 0.0
         overrides = {}
         if inner:
             targets = []
@@ -293,6 +302,7 @@ def _evaluate_folds(root, folds, nested, fit, persistent, labels, positions, cla
                     if persistent:
                         save_result(inner_receipt, run, perf_counter() - inner_start + previous)
                 targets.extend(labels[[positions[key] for key in split.test]] == classes[1])
+                threshold_hpo_time += run.hpo_time
                 for seed_run in run.per_seed:
                     proba = seed_run["predict_proba"]
                     if proba is None or proba.shape != (len(split.test), 2) or not np.isfinite(proba).all():
@@ -305,6 +315,8 @@ def _evaluate_folds(root, folds, nested, fit, persistent, labels, positions, cla
                 for seed, scores in per_seed.items()
             }
         result, previous = fit(outer, directory / "outer", overrides)
+        if inner:
+            result.hpo_time += threshold_hpo_time
         results.append(result)
         seconds = perf_counter() - started + recovered_seconds + previous
         if persistent:
