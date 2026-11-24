@@ -222,8 +222,7 @@ class GRANDE(nn.Module):
         X_val = self.encoder_ordinal.transform(X_val)
 
         self.encoder_loo = ce.LeaveOneOutEncoder(cols=high_cardinality_indices)
-        self.encoder_loo.fit(X_train, y_train)
-        X_train = self.encoder_loo.transform(X_train)
+        X_train = self.encoder_loo.fit_transform(X_train, y_train)
         X_val = self.encoder_loo.transform(X_val)
 
         self.encoder_ohe = ce.OneHotEncoder(cols=low_cardinality_indices)

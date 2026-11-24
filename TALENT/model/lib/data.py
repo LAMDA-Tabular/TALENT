@@ -190,7 +190,7 @@ def data_nan_process(N_data, C_data, num_nan_policy, cat_nan_policy, num_new_val
             for k, v in C_for_imputer.items():
                 v[cat_nan_masks[k]] = np.nan
             if imputer is None:
-                imputer = SimpleImputer(strategy='most_frequent') 
+                imputer = SimpleImputer(strategy='most_frequent', keep_empty_features=True)
                 imputer.fit(C_for_imputer['train'])
             C = {k: imputer.transform(v) for k, v in C_for_imputer.items()}
         else:
@@ -351,19 +351,19 @@ def data_enc_process(N_data, C_data, cat_policy, y_train = None, ord_encoder = N
                 cat_encoder = category_encoders.HashingEncoder()
                 cat_encoder.fit(C_data['train'].astype(str))
             C_data = {k: cat_encoder.transform(v.astype(str)).values for k, v in C_data.items()}
-        elif cat_policy == 'loo':
+        elif cat_policy in ('loo', 'catboost'):
             if cat_encoder is None:
-                cat_encoder = category_encoders.LeaveOneOutEncoder()
+                encoder_cls = (category_encoders.LeaveOneOutEncoder if cat_policy == 'loo'
+                               else category_encoders.CatBoostEncoder)
+                cat_encoder = encoder_cls()
                 cat_encoder.fit(C_data['train'].astype(str), y_train)
-            C_data = {k: cat_encoder.transform(v.astype(str)).values for k, v in C_data.items()}
+            # Training rows use leave-one-out or ordered statistics. Held-out
+            # rows use the category statistics fitted on the full training set.
+            C_data = {k: cat_encoder.transform(v.astype(str), y_train if k == 'train' else None).values
+                      for k, v in C_data.items()}
         elif cat_policy == 'target':
             if cat_encoder is None:
                 cat_encoder = category_encoders.TargetEncoder()
-                cat_encoder.fit(C_data['train'].astype(str), y_train)
-            C_data = {k: cat_encoder.transform(v.astype(str)).values for k, v in C_data.items()}
-        elif cat_policy == 'catboost':
-            if cat_encoder is None:
-                cat_encoder = category_encoders.CatBoostEncoder()
                 cat_encoder.fit(C_data['train'].astype(str), y_train)
             C_data = {k: cat_encoder.transform(v.astype(str)).values for k, v in C_data.items()}
         elif cat_policy == 'tabr_ohe':
