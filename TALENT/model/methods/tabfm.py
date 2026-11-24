@@ -8,7 +8,10 @@ Setup:
     pip install -U "tabfm[pytorch]"
 """
 
+import gc
 import inspect
+import logging
+from numbers import Integral
 import time
 
 import numpy as np
@@ -212,16 +215,49 @@ class TabFMMethod(Method):
             self.model.fit(X_train, y_train)
             self.fit_time = time.time() - tic
 
+    def _predict_rows(self, frame):
+        predict = self.model.predict if self.is_regression else self.model.predict_proba
+        size = (self.args.config.get("general") or {}).get("predict_chunk_size")
+        if size is not None and (isinstance(size, bool) or not isinstance(size, Integral) or size < 0):
+            raise ValueError("predict_chunk_size must be a nonnegative integer or None")
+        count = len(frame)
+        if not count:
+            return predict(frame)
+        size = min(size or count, count)
+        start = 0
+        parts = []
+        while start < count:
+            stop = min(start + size, count)
+            block = frame if stop - start == count else frame.iloc[start:stop].reset_index(drop=True)
+            try:
+                prediction = predict(block)
+            except RuntimeError as error:
+                cuda_oom = isinstance(error, torch.cuda.OutOfMemoryError) or (
+                    "cuda" in str(error).lower() and "out of memory" in str(error).lower()
+                )
+                if torch.device(self.args.device).type != "cuda" or not cuda_oom or stop - start <= 1:
+                    raise
+            else:
+                if stop - start == count:
+                    return prediction
+                parts.append(np.asarray(prediction))
+                start = stop
+                continue
+
+            # Release the failed call's traceback before retrying the same rows.
+            size = (stop - start) // 2
+            gc.collect()
+            torch.cuda.empty_cache()
+            logging.getLogger(__name__).warning("TabFM CUDA memory exhausted; retrying with %d query rows", size)
+        return np.concatenate(parts, axis=0)
+
     def predict(self, data, info, model_name):
         N, C, y = data
         self.data_format(False, N, C, y)
         X_test = self._to_frame(self.N_test, self.C_test)
 
         tic = time.time()
-        if self.is_regression:
-            test_logit = self.model.predict(X_test)
-        else:
-            test_logit = self.model.predict_proba(X_test)
+        test_logit = self._predict_rows(X_test)
         self.predict_time = time.time() - tic
 
         test_logit = np.asarray(test_logit).astype(np.float32)

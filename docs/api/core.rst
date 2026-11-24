@@ -13,6 +13,15 @@ for an ``(n_rows, n_classes)`` array and ``predict_labels`` for encoded class
 indices. For regression, use ``predictions`` in the original target units.
 See :doc:`../tutorials` for a runnable example.
 
+Pass ``return_validation_predictions=True`` for raw validation outputs and
+classification probabilities, per seed and for the last seed. Arrays follow
+the input validation order. A ``TALENT.Scorer(name, func, response,
+greater_is_better)`` can supply a reporting metric (``scoring``), validation
+objective (``tune_metric``), or binary decision cost (``threshold_metric``,
+with ``response="labels"``). Probability scorers receive all columns in sorted
+training-class order. Regression scorers receive original-scale predictions.
+Version custom scoring functions with ``resume_key`` in resumable CV.
+
 Reproducible benchmarks
 -----------------------
 

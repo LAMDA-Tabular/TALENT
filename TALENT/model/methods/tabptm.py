@@ -80,11 +80,9 @@ class TabPTMMethod(Method):
             X = {k: v.to(self.args.device) for k, v in to_tensors(N_test).items()}
             Y = {k: v.to(self.args.device) for k, v in to_tensors(y_test).items()}
             self.N_test = {k: v.double() for k, v in X.items()}
-            if self.is_regression:
-                self.y_test = {k: v.double() for k, v in Y.items()}
-            else:
-                self.y_test = {k: v.long() for k, v in Y.items()}
-            testset = TabPTMData(self.D, self.N_test, self.y_test, self.y_info, 'test')
+            Y = {k: v.double() if self.is_regression else v.long() for k, v in Y.items()}
+            testset = TabPTMData(self.D, self.N_test, Y, self.y_info, 'test')
+            self.y_test = Y['test']
             self.test_loader = DataLoader(dataset=testset, batch_size=2048, shuffle=False, num_workers=0)
 
     def construct_model(self, model_config = None):

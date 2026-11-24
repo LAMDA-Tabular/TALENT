@@ -641,6 +641,7 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info, *, score_candid
     import optuna
     import optuna.samplers
     import optuna.trial
+    from TALENT.benchmark.scoring import Scorer
     from TALENT.benchmark.study import run_trials
     args.hpo_time = 0.0
     from TALENT.model.lib.tuning_metric import (
@@ -648,13 +649,12 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info, *, score_candid
     )
     # Validate here as well so the CLI path fails fast on a typo (the Python
     # API already validates before calling this function).
-    validate_tune_metric(resolve_tune_metric(args), is_regression=info['task_type'] == 'regression')
-    if score_candidate is None:
+    tune_metric = validate_tune_metric(resolve_tune_metric(args), is_regression=info['task_type'] == 'regression')
+    if score_candidate is None and not isinstance(tune_metric, Scorer):
         assert_tune_metric_supported(args.model_type, args)
     # The tuned config depends on the objective, so a metric-specific search
     # gets its own cache file; tune_metric=None keeps the historical filename.
-    tune_metric = resolve_tune_metric(args)
-    tuned_config_path = osp.join(
+    tuned_config_path = None if isinstance(tune_metric, Scorer) else osp.join(
         args.save_path,
         '{}-tuned.json'.format(args.model_type) if tune_metric is None
         else '{}-tuned-{}.json'.format(args.model_type, tune_metric),
@@ -811,7 +811,7 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info, *, score_candid
             raise ValueError("non-finite validation objective")
         return score
 
-    benchmark_search = persist or score_candidate is not None
+    benchmark_search = persist or score_candidate is not None or isinstance(tune_metric, Scorer)
     if not benchmark_search and osp.exists(tuned_config_path) and args.retune == False:
         with open(tuned_config_path, 'rb') as fp:
             args.config = json.load(fp)

@@ -112,6 +112,22 @@ def standardize_predict_proba(
 #  Main entry point
 # ----------------------------------------------------------------------------
 
+def _custom_score(scorer, train_labels, test_labels, predictions, probabilities, labels):
+    from sklearn.preprocessing import LabelEncoder
+
+    targets = np.asarray(test_labels).reshape(-1)
+    if scorer.response == "prediction":
+        response = _to_numpy(predictions).reshape(-1)
+    else:
+        targets = LabelEncoder().fit(np.asarray(train_labels).reshape(-1)).transform(targets)
+        response = probabilities if scorer.response == "proba" else labels
+        if response is None:
+            if scorer.response == "proba":
+                raise ValueError(f"Scorer {scorer.name!r} requires probabilities")
+            response = _to_numpy(predictions).reshape(-1)
+    return scorer(targets, response)
+
+
 def evaluate(
     method: Any,
     train_val_data: Tuple[Any, Any, Any],
@@ -123,6 +139,8 @@ def evaluate(
     tune_threshold: bool = True,
     threshold_metric: str = "f1",
     decision_threshold: Optional[float] = None,
+    return_validation_predictions: bool = False,
+    scoring=None,
 ) -> Dict[str, Any]:
     """Predict + (optionally) tune threshold on val + return enriched metrics.
 
@@ -168,6 +186,8 @@ def evaluate(
           threshold (binclass) or ``argmax(predict_proba)`` otherwise
         - ``threshold`` -- the tuned threshold, or ``None`` if not tuned
     """
+    from TALENT.benchmark.scoring import Scorer
+
     task = info.get("task_type")
     is_regression = task == "regression"
     is_binclass = task == "binclass"
@@ -194,12 +214,14 @@ def evaluate(
 
     # ------ 2. Tune threshold on the validation set ---------------------------
     threshold: Optional[float] = None
+    validation_predictions = validation_proba = None
+    select_threshold = decision_threshold is None and is_binclass and tune_threshold
 
     if decision_threshold is not None:
         threshold = decision_threshold
         scores = test_predictions if test_proba is None else test_proba
         vres, metric_names = method.metric(scores, test_labels, y_info, threshold=threshold)
-    elif is_binclass and tune_threshold:
+    if select_threshold or return_validation_predictions:
         # Adapters replace their query arrays and loader on each predict call.
         test_state = {name: getattr(method, name)
                       for name in ("N_test", "C_test", "y_test", "test_loader", "predict_time")
@@ -214,9 +236,12 @@ def evaluate(
             val_labels = method.y_test if hasattr(method, "y_test") else None
 
             val_proba = standardize_predict_proba(
-                val_predictions, output_type, is_regression=False
+                val_predictions, output_type, is_regression=is_regression
             )
-            if val_proba is not None and val_proba.shape[1] == 2 and val_labels is not None:
+            if return_validation_predictions:
+                validation_predictions = _to_numpy(val_predictions)
+                validation_proba = val_proba
+            if select_threshold and val_proba is not None and val_proba.shape[1] == 2 and val_labels is not None:
                 from TALENT.model.lib.threshold import tune_threshold as _find_threshold
                 threshold, _ = _find_threshold(
                     _to_numpy(val_labels), val_proba, metric=threshold_metric
@@ -227,6 +252,8 @@ def evaluate(
                     test_proba, test_labels, y_info, threshold=threshold
                 )
         except Exception as exc:  # pragma: no cover -- defensive fallback
+            if return_validation_predictions or isinstance(threshold_metric, Scorer):
+                raise
             warnings.warn(
                 f"Threshold tuning failed ({exc!r}); "
                 f"falling back to argmax metrics."
@@ -244,7 +271,16 @@ def evaluate(
         else:
             predict_labels = test_proba.argmax(axis=1)
 
+    if scoring is not None:
+        if scoring.name in metric_names:
+            raise ValueError(f"Custom scorer name {scoring.name!r} duplicates a reported metric")
+        value = _custom_score(scoring, train_val_data[2]["train"], test_data[2]["test"],
+                              test_predictions, test_proba, predict_labels)
+        vres, metric_names = (*vres, value), (*metric_names, scoring.name)
+
     return {
+        "validation_predictions": validation_predictions,
+        "validation_predict_proba": validation_proba,
         "predict_time": predict_time,
         "loss": float(vl) if vl == vl else float("nan"),  # NaN-safe coercion
         "metrics": tuple(vres),

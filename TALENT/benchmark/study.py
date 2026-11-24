@@ -10,6 +10,7 @@ import optuna
 from optuna.trial import TrialState
 
 from .measurement import elapsed_call
+from .scoring import Scorer
 
 
 def run_trials(study, objective, args, **options):
@@ -63,8 +64,19 @@ def optimize_candidates(args, info, train_val, direction, sample_config, score_c
                     if score_candidate is not None:
                         return score_candidate(trial, trial_args, config)
                     set_seeds(trial_args.seed)
+                    scorer = getattr(trial_args, "tune_metric", None)
+                    if isinstance(scorer, Scorer):
+                        trial_args.tune_metric = None
                     method = get_method(args.model_type)(trial_args, info["task_type"] == "regression")
                     method.fit(train_val, info, train=True, config=deepcopy(config))
+                    if isinstance(scorer, Scorer):
+                        from TALENT.model.lib.evaluation import evaluate, _val_as_test
+                        from TALENT.model.method_registry import get_method_spec
+
+                        result = evaluate(method, train_val, _val_as_test(train_val), info,
+                                          trial_args.evaluate_option, tune_threshold=False, scoring=scorer,
+                                          output_type=get_method_spec(args.model_type).output_type)
+                        return result["metrics"][-1]
                     score = float(method.trlog["best_res"])
                     if not isfinite(score):
                         raise ValueError("non-finite validation objective")

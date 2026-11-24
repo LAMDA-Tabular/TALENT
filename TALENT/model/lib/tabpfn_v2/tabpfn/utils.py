@@ -29,11 +29,7 @@ from .constants import (
 from .model.bar_distribution import FullSupportBarDistribution
 from .model.loading import download_model, load_model
 
-try:
-    from sklearn.utils.validation import validate_data
-except ImportError:  # scikit-learn 1.4 and 1.5
-    def validate_data(estimator, *args, ensure_all_finite, **kwargs):
-        return estimator._validate_data(*args, force_all_finite=ensure_all_finite, **kwargs)
+from TALENT.model.lib.sklearn_compat import validate_data
 
 if TYPE_CHECKING:
     from sklearn.base import TransformerMixin

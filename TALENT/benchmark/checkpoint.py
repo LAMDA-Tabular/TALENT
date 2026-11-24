@@ -23,6 +23,13 @@ def run_identity(spec, data, protocol, options, root):
     defaults = dict(vars(args)) if args is not None else {}
     defaults.pop("save_path", None)  # Each fit gets its own directory under the run root.
     defaults.pop("hpo_time", None)  # Elapsed time on a previously tuned namespace is an output.
+    # Importable callbacks may depend on external code or data. The caller's
+    # resume_key versions those semantics; the manifest also records scorer settings.
+    from .scoring import Scorer
+    for values in (defaults, options):
+        for key, value in list(values.items()):
+            if isinstance(value, Scorer):
+                values[key] = (value.name, value.response, value.greater_is_better)
     effective = {**defaults, **options}
     config = options.get("config")
     if config is None:
@@ -123,7 +130,7 @@ def run_directory(method, parent, resume_dir, identity):
         lock.release()
 
 
-_ARRAYS = ("predictions", "predict_proba", "predict_labels")
+_ARRAYS = ("predictions", "predict_proba", "predict_labels", "validation_predictions", "validation_predict_proba")
 _TUPLES = ("metrics", "metric_names", "metrics_mean", "metrics_std")
 
 
@@ -176,7 +183,7 @@ def save_result(path, result, seconds):
     for i, seed in enumerate(result.per_seed):
         metadata["per_seed"].append({k: v for k, v in seed.items() if k not in _ARRAYS})
         for name in _ARRAYS:
-            if seed[name] is not None:
+            if seed.get(name) is not None:
                 array = np.asarray(seed[name])
                 if array.dtype.hasobject:
                     raise ValueError("Cannot checkpoint object-valued predictions")
@@ -203,11 +210,16 @@ def load_result(path, split_id):
             data[key] = tuple(data[key])
         for i, seed in enumerate(data["per_seed"]):
             for name in _ARRAYS:
+                validation = name.startswith("validation_")
+                if validation and "validation_rows" not in seed:
+                    continue
                 key = f"{i}_{name}"
-                seed[name] = archive[key] if name == "predictions" or key in expected else None
-                if seed[name] is not None and len(seed[name]) != seed["query_rows"]:
+                required = name in ("predictions", "validation_predictions")
+                seed[name] = archive[key] if required or key in expected else None
+                rows = seed["validation_rows" if validation else "query_rows"]
+                if seed[name] is not None and len(seed[name]) != rows:
                     raise ValueError(f"Unexpected prediction length in {path}")
             for key in ("metrics", "metric_names"):
                 seed[key] = tuple(seed[key])
-        data.update({name: data["per_seed"][-1][name] for name in _ARRAYS})
+        data.update({name: data["per_seed"][-1].get(name) for name in _ARRAYS})
     return RunResult(**data), payload["seconds"]

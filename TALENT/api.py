@@ -54,6 +54,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import importlib.resources as pkg_resources
 import numpy as np
 
+from TALENT.benchmark.scoring import Scorer
 from TALENT.benchmark.cv import CrossValidationResult, cross_validate, cross_validate_from_dataset, make_folds
 from TALENT.model.method_registry import (
     METHOD_REGISTRY,
@@ -132,6 +133,8 @@ class RunResult:
     measurements: Dict[str, Any] = field(default_factory=dict)
     split_id: Optional[str] = None
     hpo_time: Optional[float] = None
+    validation_predictions: Optional[np.ndarray] = None
+    validation_predict_proba: Optional[np.ndarray] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Return a JSON-safe summary (predictions excluded)."""
@@ -377,9 +380,11 @@ def run(
     return_method: bool = False,
     verbose: bool = False,
     tune_threshold: bool = True,
-    threshold_metric: str = "f1",
+    threshold_metric: Union[str, Scorer] = "f1",
     decision_threshold: Optional[Union[float, Dict[int, float]]] = None,
-    tune_metric: Optional[str] = None,
+    tune_metric: Optional[Union[str, Scorer]] = None,
+    scoring: Optional[Scorer] = None,
+    return_validation_predictions: bool = False,
     measure: bool = False,
     hash_checkpoint: bool = False,
     _benchmark_search=None,
@@ -432,18 +437,22 @@ def run(
         Accuracy / F1 / Avg_Recall / Avg_Precision. Threshold-independent
         metrics (LogLoss, AUC, Brier, ECE) are unaffected. Has no effect
         on regression or multiclass tasks.
-    threshold_metric : {"f1", "accuracy", "precision", "recall", "balanced_accuracy"}
+    threshold_metric : str or Scorer
         Which metric to optimise when tuning the threshold. Default ``"f1"``.
     decision_threshold : float or dict of seed to float, optional
         Apply a previously selected binary threshold instead of tuning one on validation.
-    tune_metric : str, optional
+    scoring : Scorer, optional
+        Append this metric to the evaluation of each seed.
+    return_validation_predictions : bool, default False
+        Retain raw validation predictions and available probabilities per seed.
+    tune_metric : str or Scorer, optional
         Metric optimised during hyper-parameter search (e.g. ``"AUC"``,
         ``"R2"``, ``"RMSE"``, ``"LogLoss"``). ``None`` (default) keeps TALENT's
         historical HPO objective (validation Accuracy for classification,
         MAE/RMSE for regression). See
-        ``TALENT.model.lib.tuning_metric.supported_tune_metrics()``. Not
-        supported for single-validation tuning with ``tabnet``, ``ptarl``
-        or ``tabcaps``, which use fixed validation metrics.
+        ``TALENT.model.lib.tuning_metric.supported_tune_metrics()``. TabNet,
+        PTaRL and TabCaps have fixed internal validation metrics. A custom
+        Scorer evaluates the candidate checkpoint independently of early stopping.
     measure : bool, default False
         Record per-seed wall times, observed device and context, checkpoint
         identity, and sampled process memory in `result.measurements`.
@@ -515,7 +524,17 @@ def run(
     from TALENT.model.lib.tuning_metric import (
         validate_tune_metric, assert_tune_metric_supported,
     )
-    validate_tune_metric(args.tune_metric, is_regression=info.get('task_type') == 'regression')
+    is_regression = info.get('task_type') == 'regression'
+    validate_tune_metric(args.tune_metric, is_regression=is_regression)
+    if scoring is not None:
+        if not isinstance(scoring, Scorer):
+            raise TypeError("scoring requires a TALENT.Scorer")
+        validate_tune_metric(scoring, is_regression=is_regression)
+    for scorer in (scoring, args.tune_metric):
+        if isinstance(scorer, Scorer) and scorer.response == "proba" and spec.output_type == OutputType.CLASS_LABELS:
+            raise ValueError(f"{model_type} cannot supply probabilities for {scorer.name!r}")
+    if isinstance(threshold_metric, Scorer) and threshold_metric.response != "labels":
+        raise ValueError("A threshold scorer requires response='labels'")
 
     if args.tune and not spec.supports_hpo:
         raise ValueError(
@@ -531,8 +550,6 @@ def run(
         requested_device = "cpu"
     args.device = get_device(requested_device)
 
-    # Detect regression
-    is_regression = info.get('task_type') == 'regression'
     if is_regression and not spec.supports_regression:
         raise ValueError(
             f"Method {model_type!r} does not support regression. "
@@ -564,7 +581,7 @@ def run(
 
     # Optional HPO. The current `tune_hyper_parameters` mutates args.config.
     if args.tune and spec.supports_hpo:
-        if not (_benchmark_search or {}).get("score_candidate"):
+        if not isinstance(args.tune_metric, Scorer) and not (_benchmark_search or {}).get("score_candidate"):
             assert_tune_metric_supported(model_type, args)
         # Load opt_space — required by tune_hyper_parameters
         _, opt_space = _try_load_method_config(model_type)
@@ -577,6 +594,9 @@ def run(
                               info, **(_benchmark_search or {}))
             if meter is not None:
                 measurements["tuning_seconds"] = meter.data["tuning_seconds"]
+
+    if isinstance(args.tune_metric, Scorer):
+        args.tune_metric = None  # Candidate scoring is external to the adapter.
 
     # Use the centralized evaluator so the CLI scripts and the API share
     # the exact same evaluation logic (predict_proba standardization +
@@ -610,6 +630,8 @@ def run(
                 tune_threshold=tune_threshold,
                 threshold_metric=threshold_metric,
                 decision_threshold=thresholds.get(args.seed),
+                return_validation_predictions=return_validation_predictions,
+                scoring=scoring,
             )
             if meter is not None:
                 meter.data["train_rows"] = len(train_val_data[2]["train"])
@@ -643,6 +665,12 @@ def run(
             "predict_labels": eval_result["predict_labels"],
             "threshold": eval_result["threshold"],
         })
+        if return_validation_predictions:
+            per_seed[-1].update(
+                validation_predictions=eval_result["validation_predictions"],
+                validation_predict_proba=eval_result["validation_predict_proba"],
+                validation_rows=len(train_val_data[2]["val"]),
+            )
         last_predictions = preds
         last_metric_names = tuple(metric_names)
         last_predict_proba = eval_result["predict_proba"]
@@ -660,6 +688,8 @@ def run(
 
     result = RunResult(
         predictions=last_predictions,
+        validation_predictions=per_seed[-1].get("validation_predictions"),
+        validation_predict_proba=per_seed[-1].get("validation_predict_proba"),
         predict_proba=last_predict_proba,
         predict_labels=last_predict_labels,
         threshold=last_threshold,

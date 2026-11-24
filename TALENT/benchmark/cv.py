@@ -10,6 +10,7 @@ from time import perf_counter
 
 import numpy as np
 
+from .scoring import Scorer
 from .splits import BenchmarkSplit, _ids, _unit_codes, _unit_index
 from .checkpoint import load_result, run_directory, run_identity, save_result
 
@@ -118,13 +119,16 @@ class CrossValidationResult:
 def _score_folds(trial, args, config, *, method, folds, data, metric):
     """Evaluate a single sampled configuration on every held-out HPO fold."""
     args.config = config
+    scorer = metric if isinstance(metric, Scorer) else None
+    if scorer is not None:
+        args.tune_metric = None
     trial.set_user_attr("fold_ids", [part.split_id for part in folds])
     scores = []
     for index, part in enumerate(folds):
         run = part.run(method, *data, args=deepcopy(args), tune=False, seed_num=1,
-                       tune_threshold=False, allow_extra_rows=True,
+                       tune_threshold=False, allow_extra_rows=True, scoring=scorer,
                        save_path=os.path.join(args.save_path, str(index)))
-        value = float(run.metrics[run.metric_names.index(metric)])
+        value = float(run.metrics[run.metric_names.index(scorer.name if scorer is not None else metric)])
         if not np.isfinite(value):
             raise ValueError(f"Undefined {metric} on HPO fold {index}")
         scores.append(value)
@@ -208,6 +212,10 @@ def cross_validate(method, row_ids, N, C, y, info, *, cv=5, split_seed=0, val_fr
     if resume_dir is not None and split_seed is None and timestamps is None:
         raise ValueError("resumable shuffled CV requires a fixed split_seed")
     metric = options.get("tune_metric") or getattr(args, "tune_metric", None)
+    if resume_dir is not None and resume_key is None and any(
+        isinstance(scorer, Scorer) for scorer in (metric, options.get("threshold_metric"), options.get("scoring"))
+    ):
+        raise ValueError("Set resume_key to a version for your custom scoring functions when resuming CV")
     objective = validate_tune_metric(metric, is_regression=not classification) if tune else None
 
     classes = np.unique(labels) if classification else None
@@ -297,7 +305,8 @@ def _evaluate_folds(root, folds, nested, fit, persistent, labels, positions, cla
                     recovered_seconds += seconds
                 else:
                     inner_start = perf_counter()
-                    run, previous = fit(split, inner_dir, {"tune_threshold": False, "return_method": False})
+                    run, previous = fit(split, inner_dir, {"tune_threshold": False, "return_method": False,
+                                                     "scoring": None, "return_validation_predictions": False})
                     recovered_seconds += previous
                     if persistent:
                         save_result(inner_receipt, run, perf_counter() - inner_start + previous)

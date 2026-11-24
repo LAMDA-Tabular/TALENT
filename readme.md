@@ -80,6 +80,7 @@ Welcome to **TALENT**, a benchmark with a comprehensive machine learning toolbox
 ## 📰 What's New
 
 - [2026-11] Added [cross-validation](#cross-validation) with stratified, grouped and temporal folds, inner threshold selection, [fold-averaged Optuna tuning and resumable studies](#tuning-across-folds-and-resuming-a-run). Added training, HPO and inference timing, [replayable splits and matched comparisons](#reproducible-benchmarks), and five foundation model releases (Seldon, Seldon-mini, Inpriora, LimiX-2-1016 and TabDPT 1.3). Fixed classification scoring, group ID handling, target leakage in leave-one-out and ordered categorical encoding, most-frequent imputation for empty categorical columns, HPO metric and trial validation, and training or prediction errors in TabR, GRANDE, PTaRL, TabCaps, XGBoost and TabAutoPNPNet.
+  TabICL v1 now validates data across supported scikit-learn versions and honours thread limits during prediction and restores the previous setting afterwards. TabFM can score query rows in chunks. The Python API can return validation predictions and use custom scorers for reporting, tuning and threshold selection. TabPTM classification now supplies its query labels to the threshold evaluator.
   Also fixed ProtoGate vote probabilities, TabPTM training on small datasets and in single precision, regression with column-vector targets in Mitra and TabPFN-v2, and TabPFN-v2 input validation and CPU memory estimation. RFM and xRFM now index expanded features correctly and honour checkpoint-only loading. Resumable runs detect changes to local weights supplied through `checkpoint_path`.
 
 - [2026-10]🌟 Add the September 2026 wave of tabular foundation models: **[TabPFN-3.5](https://github.com/PriorLabs/TabPFN)**, **[LimiX-2](https://github.com/limix-ldm-ai/LimiX)**, **[NVIDIA Kumo Tabular](https://github.com/NVIDIA/structured-data-models)**, **[Mitra-v2](https://arxiv.org/abs/2609.04540)**, **[Causilo](https://github.com/nums-ai/causilo)**, **[Xiaomi-TabLDM](https://github.com/xiaomi-research/xiaomi-tabldm)** and **[EXAONE-Tabular](https://github.com/LGAI-Research/EXAONE-Tabular)**. The new adapters document their weight sources and supported options; `tabpfn_v3` now pins the TabPFN-3 checkpoint (`tabpfn>=9.0` changed the package default to TabPFN-3.5).
@@ -406,6 +407,55 @@ candidate selection can use a reported metric while those methods retain
 their own early-stopping criteria.
 
 Tuning checks that the requested metric applies to the task. In native CV, AUC requires every class and R2 requires at least two rows in each validation partition and each held-out HPO scoring fold. Check these conditions when using small groups or short time windows.
+
+#### Custom scores and validation predictions
+
+Use a `TALENT.Scorer` to specify which predictions a metric consumes and whether
+larger scores are better. For example, select a model by binary average precision
+and choose its decision threshold by validation misclassification cost:
+
+```python
+from sklearn.metrics import average_precision_score
+from TALENT import Scorer, run
+
+ap = Scorer("AveragePrecision", lambda y, p: average_precision_score(y, p[:, 1]),
+            response="proba", greater_is_better=True)
+
+def cost(y, decision):
+    return ((5 * ((y == 1) & (decision == 0))) + ((y == 0) & (decision == 1))).mean()
+
+loss = Scorer("DecisionCost", cost, response="labels", greater_is_better=False)
+result = run("LogReg", train_val, test, info, tune=True, n_trials=5,
+             tune_metric=ap, threshold_metric=loss, scoring=loss,
+             return_validation_predictions=True)
+val_proba = result.validation_predict_proba
+test_cost = dict(zip(result.metric_names, result.metrics))["DecisionCost"]
+```
+
+`scoring` adds a test metric. `tune_metric` chooses hyperparameters using
+validation data and `threshold_metric` chooses a binary decision threshold.
+Classification scorers receive integer labels in sorted training-class order
+and either predicted labels or the full probability matrix. Use
+`response="prediction"` for regression in original target units.
+Custom HPO scores the candidate's selected checkpoint and keeps the adapter's
+ordinary early-stopping rule. A standalone search with a custom objective runs
+fresh trials. Use resumable CV to reuse those studies. These options also work with `hpo_cv` and
+`threshold_cv`. For resumable CV, set `resume_key` to a version for your
+scoring functions and change it when their behavior or parameters change.
+
+`return_validation_predictions=True` retains `validation_predictions` and,
+for probabilistic classifiers, `validation_predict_proba` in validation-row
+order. Top-level arrays refer to the last seed. Each `per_seed` entry has its
+own arrays. Binary threshold tuning reuses the same validation pass. Other
+runs request one extra prediction pass only when these outputs are requested.
+
+#### TabFM query memory
+
+Set `config={"general": {"predict_chunk_size": 256}}` to score at most 256
+query rows per TabFM prediction call with the same fitted training context.
+The default starts with the full query split. On CUDA memory exhaustion,
+TabFM retries the failed rows in smaller chunks down to one row. The training
+context size and the number of ensemble members are separate settings.
 
 Introspect or filter methods via the unified registry:
 
