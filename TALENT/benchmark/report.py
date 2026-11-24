@@ -16,6 +16,10 @@ def result_record(result, dataset, metric, *, split_id=None):
     if metric not in scores:
         raise ValueError(f"metric {metric!r} is unavailable; choose from {tuple(scores)}")
     seeds = result.measurements.get("seeds", [])
+    if not seeds and result.per_seed and all(s.get("query_rows") for s in result.per_seed):
+        seeds = [{"fit_seconds": s["fit_time"],
+                  "predict_seconds_per_1000": s["predict_time"] * 1000 / s["query_rows"]}
+                 for s in result.per_seed]
     cost = {}
     for key in ("fit_seconds", "predict_seconds_per_1000"):
         values = [s.get(key) for s in seeds]

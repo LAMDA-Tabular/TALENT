@@ -1,4 +1,5 @@
 from tqdm import tqdm
+from TALENT.benchmark.measurement import elapsed_call
 from TALENT.model.utils import (
     get_classical_args, tune_hyper_parameters,
     show_results_classical, get_method, set_seeds,
@@ -22,7 +23,7 @@ if __name__ == '__main__':
         args.seed = seed    # update seed
         set_seeds(args.seed)
         method = get_method(args.model_type)(args, info['task_type'] == 'regression')
-        time_cost = method.fit(train_val_data, info, train=True)
+        _, fit_time = elapsed_call("fit_seconds", args.device, method.fit, train_val_data, info)
         # Centralized evaluator: predict_proba standardization + (for
         # binary classification) decision threshold tuning on the
         # validation set, applied to Accuracy/F1/Precision/Recall.
@@ -39,5 +40,5 @@ if __name__ == '__main__':
         metric_name = eval_result["metric_names"]
 
         results_list.append(vres)
-        time_list.append(time_cost)
+        time_list.append((fit_time, eval_result["predict_time"]))
     show_results_classical(args, info, metric_name, results_list, time_list)

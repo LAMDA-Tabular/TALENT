@@ -526,8 +526,13 @@ def show_results_classical(args, info, metric_name, results_list, time_list):
         for idx, name in enumerate(metric_name):
             metric_arrays[name].append(result[idx])
 
-    metric_arrays['Time'] = time_list
-    metric_name = metric_name + ('Time',)
+    if len(time_list) and isinstance(time_list[0], tuple):
+        fit_times, predict_times = zip(*time_list)
+        metric_arrays.update(Time=fit_times, Fit_Time=fit_times, Inference_Time=predict_times)
+        metric_name = metric_name + ('Time', 'Fit_Time', 'Inference_Time')
+    else:
+        metric_arrays['Time'] = time_list
+        metric_name = metric_name + ('Time',)
 
     mean_metrics = {name: np.mean(metric_arrays[name]) for name in metric_name}
     std_metrics = {name: np.std(metric_arrays[name]) for name in metric_name}

@@ -88,14 +88,15 @@ class BenchmarkSplit:
             raise ValueError("split manifest fingerprint mismatch")
         return split
 
-    def materialize(self, row_ids, N, C, y):
+    def materialize(self, row_ids, N, C, y, *, allow_extra_rows=False):
         """Return TALENT train/validation and test tuples from row-aligned arrays."""
         ids = _ids(row_ids, "dataset")
-        if set(ids) != set(self.train + self.val + self.test):
+        partition = set(self.train + self.val + self.test)
+        positions = {key: i for i, key in enumerate(ids)}
+        if not partition.issubset(positions) or (not allow_extra_rows and len(ids) != len(partition)):
             raise ValueError("dataset row IDs differ from the saved partition")
         if y is None or (N is None and C is None):
             raise ValueError("provide targets and at least one numerical or categorical feature array")
-        positions = {key: i for i, key in enumerate(ids)}
         selections = {part: [positions[key] for key in keys] for part, keys in
                       (("train", self.context), ("val", self.val), ("test", self.test))}
         training, testing = [], []
@@ -111,18 +112,35 @@ class BenchmarkSplit:
             testing.append({"test": array[selections["test"]]})
         return tuple(training), tuple(testing)
 
-    def run(self, method, row_ids, N, C, y, info, *, capture_support_ids=False, **options):
+    def run(self, method, row_ids, N, C, y, info, *, capture_support_ids=False,
+            allow_extra_rows=False, **options):
         """Replay this split through TALENT.run and attach its fingerprint."""
         from TALENT import run
         from .measurement import tracking_support
 
         if capture_support_ids and not options.get("measure"):
             raise ValueError("capture_support_ids requires measure=True")
-        train_val, test = self.materialize(row_ids, N, C, y)
+        train_val, test = self.materialize(row_ids, N, C, y, allow_extra_rows=allow_extra_rows)
         with tracking_support(self.context if capture_support_ids else None):
             result = run(method, train_val, test, info, **options)
         result.split_id = self.split_id
         return result
+
+
+def _unit_codes(values, n_rows, temporal):
+    import pandas as pd
+
+    values = pd.Index(values)
+    if len(values) != n_rows or values.hasnans:
+        raise ValueError("supply one nonmissing group or timestamp per row")
+    if temporal:
+        numeric = all(isinstance(value, Real) and not isinstance(value, (bool, np.bool_))
+                      and np.isfinite(value) for value in values)
+        if not numeric:
+            if not all(isinstance(value, (date, np.datetime64)) for value in values):
+                raise ValueError("timestamps must all be finite numbers or all be datetimes")
+            values = pd.DatetimeIndex(values)
+    return pd.factorize(values, sort=temporal)[0]
 
 
 def make_split(row_ids, *, val_fraction=0.2, test_fraction=0.2, seed=0,
@@ -133,8 +151,6 @@ def make_split(row_ids, *, val_fraction=0.2, test_fraction=0.2, seed=0,
     strictly ordered. Random and group splits randomize training-row order
     for nested context prefixes. Supply stable, non-sensitive row IDs.
     """
-    import pandas as pd
-
     ids = _ids(row_ids, "dataset")
     if groups is not None and timestamps is not None:
         raise ValueError("choose either grouped or temporal splitting")
@@ -147,18 +163,9 @@ def make_split(row_ids, *, val_fraction=0.2, test_fraction=0.2, seed=0,
         units = rng.permutation(len(ids))
     else:
         temporal = timestamps is not None
-        values = pd.Index(timestamps if temporal else groups)
-        if len(values) != len(ids) or values.hasnans:
-            raise ValueError("supply one nonmissing group or timestamp per row")
-        if temporal:
-            numeric = all(isinstance(value, Real) and not isinstance(value, (bool, np.bool_))
-                          and np.isfinite(value) for value in values)
-            if not numeric:
-                if not all(isinstance(value, (date, np.datetime64)) for value in values):
-                    raise ValueError("timestamps must all be finite numbers or all be datetimes")
-                values = pd.DatetimeIndex(values)
-        codes, unique = pd.factorize(values, sort=temporal)
-        units = np.arange(len(unique)) if temporal else rng.permutation(len(unique))
+        codes = _unit_codes(timestamps if temporal else groups, len(ids), temporal)
+        count = codes.max() + 1
+        units = np.arange(count) if temporal else rng.permutation(count)
         strategy = "temporal" if temporal else "group"
 
     n_val = int(np.ceil(len(units) * val_fraction))

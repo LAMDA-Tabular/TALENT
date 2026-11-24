@@ -32,7 +32,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
-from TALENT.benchmark.measurement import timed_call
+from TALENT.benchmark.measurement import elapsed_call
 
 
 # ----------------------------------------------------------------------------
@@ -122,6 +122,7 @@ def evaluate(
     output_type=None,
     tune_threshold: bool = True,
     threshold_metric: str = "f1",
+    decision_threshold: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Predict + (optionally) tune threshold on val + return enriched metrics.
 
@@ -148,6 +149,8 @@ def evaluate(
         threshold on the validation set.
     threshold_metric : {"f1", "accuracy", "precision", "recall", "balanced_accuracy"}
         Metric to optimise when tuning the threshold.
+    decision_threshold : float, optional
+        Apply this previously selected binary threshold directly.
 
     Returns
     -------
@@ -170,7 +173,10 @@ def evaluate(
     is_binclass = task == "binclass"
 
     # ------ 1. Predict on TEST ------------------------------------------------
-    test_result = timed_call("predict_seconds", method.predict, test_data, info, model_name=model_name)
+    device = getattr(getattr(method, "args", None), "device", None)
+    test_result, predict_time = elapsed_call(
+        "predict_seconds", device, method.predict, test_data, info, model_name=model_name
+    )
     if len(test_result) == 4:
         vl, vres, metric_names, test_predictions = test_result
     elif len(test_result) == 3:
@@ -191,7 +197,10 @@ def evaluate(
     # ------ 2. Tune threshold on the validation set ---------------------------
     threshold: Optional[float] = None
 
-    if is_binclass and tune_threshold:
+    if decision_threshold is not None:
+        threshold = decision_threshold
+        vres, metric_names = method.metric(test_predictions, test_labels, y_info, threshold=threshold)
+    elif is_binclass and tune_threshold:
         try:
             val_data = _val_as_test(train_val_data)
             val_result = method.predict(val_data, info, model_name=model_name)
@@ -236,6 +245,7 @@ def evaluate(
             predict_labels = test_proba.argmax(axis=1)
 
     return {
+        "predict_time": predict_time,
         "loss": float(vl) if vl == vl else float("nan"),  # NaN-safe coercion
         "metrics": tuple(vres),
         "metric_names": tuple(metric_names),

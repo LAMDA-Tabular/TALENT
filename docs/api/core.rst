@@ -29,6 +29,23 @@ these records and the planned dataset and split IDs. It returns coverage,
 matched rankings, fit and prediction costs, and paired differences against a
 reference method. A confidence interval requires at least two matched datasets.
 
+Cross-validation
+----------------
+
+``TALENT.cross_validate(method, row_ids, N, C, y, info, cv=5)`` runs one
+standard evaluation per outer fold. Classification defaults to stratified
+folds. Supply ``groups`` for whole-group folds or ``timestamps`` for
+expanding windows with an optional gap measured in distinct timestamps.
+``threshold_cv`` optionally selects binary thresholds from inner out-of-fold
+predictions. Each fit uses a separate validation partition for model selection.
+The result exposes the outer and inner manifests, per-fold run results, total
+wall time per fold, and row IDs aligned with out-of-fold predictions.
+``TALENT.cross_validate_from_dataset`` evaluates the original training and
+validation rows of a TALENT-format dataset and reserves its test split.
+
+Every run reports elapsed fit and test prediction time. Set ``measure=True``
+to add memory, tuning time and backend information.
+
 Method infrastructure
 ---------------------
 

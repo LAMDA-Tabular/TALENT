@@ -45,7 +45,7 @@ import json
 import time
 import tempfile
 from copy import deepcopy
-from numbers import Integral
+from numbers import Integral, Real
 import warnings
 from dataclasses import dataclass, field
 from types import SimpleNamespace
@@ -54,6 +54,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import importlib.resources as pkg_resources
 import numpy as np
 
+from TALENT.benchmark.cv import CrossValidationResult, cross_validate, cross_validate_from_dataset, make_folds
 from TALENT.model.method_registry import (
     METHOD_REGISTRY,
     MethodSpec,
@@ -79,6 +80,10 @@ class RunResult:
 
     For single-seed runs, the ``*_mean`` / ``*_std`` fields equal the
     single value and ``0.0`` respectively, so the API shape is stable.
+
+    ``fit_time`` and ``predict_time`` are elapsed seconds for the adapter's
+    full fit and test prediction calls, averaged across seeds. Tuning and
+    the evaluator's separate validation prediction are excluded.
 
     Notes on the prediction-related fields:
 
@@ -369,6 +374,7 @@ def run(
     verbose: bool = False,
     tune_threshold: bool = True,
     threshold_metric: str = "f1",
+    decision_threshold: Optional[Union[float, Dict[int, float]]] = None,
     tune_metric: Optional[str] = None,
     measure: bool = False,
     hash_checkpoint: bool = False,
@@ -423,6 +429,8 @@ def run(
         on regression or multiclass tasks.
     threshold_metric : {"f1", "accuracy", "precision", "recall", "balanced_accuracy"}
         Which metric to optimise when tuning the threshold. Default ``"f1"``.
+    decision_threshold : float or dict of seed to float, optional
+        Apply a previously selected binary threshold instead of tuning one on validation.
     tune_metric : str, optional
         Metric optimised during hyper-parameter search (e.g. ``"AUC"``,
         ``"R2"``, ``"RMSE"``, ``"LogLoss"``). ``None`` (default) keeps TALENT's
@@ -532,7 +540,20 @@ def run(
         )
 
     method_cls = spec.get_class()
-    from TALENT.benchmark.measurement import measuring, timed_call
+    from TALENT.benchmark.measurement import elapsed_call, measuring, timed_call
+
+    thresholds = {}
+    if decision_threshold is not None:
+        if info.get("task_type") != "binclass" or spec.output_type == OutputType.CLASS_LABELS:
+            raise ValueError("decision_threshold requires a probabilistic binary classifier")
+        seeds = list(range(args.seed_num)) if args.seed_num > 1 else [args.seed]
+        thresholds = (decision_threshold if isinstance(decision_threshold, dict)
+                      else dict.fromkeys(seeds, decision_threshold))
+        if set(thresholds) != set(seeds) or any(
+            isinstance(v, bool) or not isinstance(v, Real) or not 0 <= v <= 1
+            for v in thresholds.values()
+        ):
+            raise ValueError("supply one decision threshold in [0, 1] for each run seed")
 
     measurements = {"tuning_seconds": None, "seeds": []} if measure else {}
 
@@ -574,20 +595,14 @@ def run(
 
         with measuring(args.device, measure) as meter:
             method = timed_call("init_seconds", method_cls, args, is_regression)
-            fit_ret = timed_call("fit_seconds", method.fit, train_val_data, info)
-            # Deep methods set self.fit_time; classical methods return the time
-            # cost from fit(). Prefer self.fit_time and fall back to the return.
-            fit_time = getattr(method, "fit_time", None)
-            if fit_time is None and isinstance(fit_ret, (int, float)):
-                fit_time = float(fit_ret)
-            elif fit_time is None:
-                fit_time = 0.0
+            _, fit_time = elapsed_call("fit_seconds", args.device, method.fit, train_val_data, info)
             eval_result = evaluate(
                 method, train_val_data, test_data, info,
                 model_name=args.evaluate_option,
                 output_type=spec.output_type,
                 tune_threshold=tune_threshold,
                 threshold_metric=threshold_metric,
+                decision_threshold=thresholds.get(args.seed),
             )
             if meter is not None:
                 meter.data["train_rows"] = len(train_val_data[2]["train"])
@@ -604,7 +619,7 @@ def run(
             preds = preds.detach().cpu().numpy()
         preds = np.asarray(preds)
 
-        predict_time = float(getattr(method, "predict_time", 0.0))
+        predict_time = eval_result["predict_time"]
         fit_times.append(float(fit_time))
         predict_times.append(predict_time)
 
@@ -615,6 +630,7 @@ def run(
             "metric_names": tuple(metric_names),
             "fit_time": float(fit_time),
             "predict_time": predict_time,
+            "query_rows": len(test_data[2]["test"]),
             "predictions": preds,
             "predict_proba": eval_result["predict_proba"],
             "predict_labels": eval_result["predict_labels"],
@@ -689,10 +705,14 @@ def run_from_dataset(
 __all__ = [
     # Result type
     "RunResult",
+    "CrossValidationResult",
     # Args / runner
     "build_args",
     "run",
     "run_from_dataset",
+    "cross_validate",
+    "cross_validate_from_dataset",
+    "make_folds",
     # Registry surface (re-exported for convenience)
     "MethodSpec",
     "METHOD_REGISTRY",

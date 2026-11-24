@@ -32,14 +32,27 @@ def timed_call(field, function, *args, **kwargs):
     meter = _ACTIVE.get()
     if meter is None:
         return function(*args, **kwargs)
-    meter.sync()
+    return elapsed_call(field, meter.device, function, *args, **kwargs)[0]
+
+
+def elapsed_call(field, device, function, /, *args, **kwargs):
+    """Return the result and wall time, including outstanding work on the selected GPU."""
+    import torch
+
+    gpu = torch.device(device) if device is not None else None
+    sync_cuda = gpu is not None and gpu.type == "cuda" and torch.cuda.is_available()
+    if sync_cuda:
+        torch.cuda.synchronize(gpu)
     started = time.perf_counter()
     result = function(*args, **kwargs)
-    meter.sync()
+    if sync_cuda:
+        torch.cuda.synchronize(gpu)
     elapsed = time.perf_counter() - started
-    meter.data[field] = (meter.data.get(field) or 0.0) + elapsed
-    meter.sample()
-    return result
+    meter = _ACTIVE.get()
+    if meter is not None:
+        meter.data[field] = (meter.data.get(field) or 0.0) + elapsed
+        meter.sample()
+    return result, elapsed
 
 
 def record_support(rows, selected_ids=None):
@@ -124,10 +137,6 @@ class _Meter:
         self.data = dict.fromkeys(("load_seconds", "support_rows", "context_rows_per_query",
                                    "sampled_peak_rss_bytes", "sampled_peak_cuda_bytes"))
         self._lock = threading.Lock()
-
-    def sync(self):
-        if self.cuda is not None:
-            self.cuda.synchronize(self.device)
 
     def sample(self):
         with self._lock:

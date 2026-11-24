@@ -79,7 +79,7 @@ Welcome to **TALENT**, a benchmark with a comprehensive machine learning toolbox
 
 ## 📰 What's New
 
-- [2026-11] Added **Seldon**, **Seldon-mini**, **Inpriora**, **LimiX-2-1016** and **TabDPT 1.3**, with backend checks and run provenance. Added [benchmark measurements, replayable splits and matched comparisons](#reproducible-benchmarks). Fixed binary metrics, device selection, preprocessing defaults and model-specific prediction errors.
+- [2026-11] Added **Seldon**, **Seldon-mini**, **Inpriora**, **LimiX-2-1016** and **TabDPT 1.3**, with backend checks and run provenance. Added [native cross-validation](#cross-validation), optional inner threshold selection, shared fit and prediction timers, [replayable splits and matched comparisons](#reproducible-benchmarks). Fixed binary metrics, device selection, preprocessing defaults and model-specific prediction errors.
 
 - [2026-10]🌟 Add the September 2026 wave of tabular foundation models: **[TabPFN-3.5](https://github.com/PriorLabs/TabPFN)**, **[LimiX-2](https://github.com/limix-ldm-ai/LimiX)**, **[NVIDIA Kumo Tabular](https://github.com/NVIDIA/structured-data-models)**, **[Mitra-v2](https://arxiv.org/abs/2609.04540)**, **[Causilo](https://github.com/nums-ai/causilo)**, **[Xiaomi-TabLDM](https://github.com/xiaomi-research/xiaomi-tabldm)** and **[EXAONE-Tabular](https://github.com/LGAI-Research/EXAONE-Tabular)**. The new adapters document their weight sources and supported options; `tabpfn_v3` now pins the TabPFN-3 checkpoint (`tabpfn>=9.0` changed the package default to TabPFN-3.5).
 - [2026-08]🌟 Add **[TRC](https://arxiv.org/abs/2603.16569)** (TPAMI 2026), a post-hoc representation corrector that trains and freezes an FT-Transformer backbone before learning representation re-estimation and light-space mapping.
@@ -191,6 +191,7 @@ From a source checkout, the CLI scripts live in `test/` and sample data in `exam
 
 ```python
 from tqdm import tqdm
+from TALENT.benchmark.measurement import elapsed_call
 from TALENT.model.utils import get_deep_args, show_results, tune_hyper_parameters, get_method, set_seeds
 from TALENT.model.lib.data import get_dataset
 from TALENT.model.lib.evaluation import evaluate
@@ -208,7 +209,7 @@ if __name__ == '__main__':
         args.seed = seed    # update seed
         set_seeds(args.seed)
         method = get_method(args.model_type)(args, info['task_type'] == 'regression')
-        method.fit(train_val_data, info)
+        _, fit_time = elapsed_call("fit_seconds", args.device, method.fit, train_val_data, info)
         # evaluate() standardizes predict_proba and (for binary tasks) tunes
         # the decision threshold on the validation split.
         eval_result = evaluate(
@@ -220,7 +221,7 @@ if __name__ == '__main__':
         loss_list.append(eval_result["loss"])
         results_list.append(eval_result["metrics"])
         metric_name = eval_result["metric_names"]
-        time_list.append((method.fit_time, method.predict_time))
+        time_list.append((fit_time, eval_result["predict_time"]))
 
     show_results(args, info, metric_name, loss_list, results_list, time_list)
 ```
@@ -299,13 +300,37 @@ print(report["ranking"], report["counts"], report["contrasts"])
 
 **Choosing a split.** Pass `groups=` to keep whole groups together or `timestamps=` for chronological training, validation and test periods. Equal timestamps stay together. Validation and test fractions apply to the number of rows, groups or distinct timestamps, respectively. `with_context(k)` selects nested training subsets and preserves both holdouts. Temporal contexts use the most recent training rows. For classification, check class coverage when choosing small contexts. You can also construct `BenchmarkSplit(train, val, test, context)` with your own ordered ID sequences. The manifest stores IDs in plain text and fingerprints their assignments and order. Use non-sensitive IDs and record the dataset version separately. Replaying the manifest accepts reordered source data and checks that the row IDs match.
 
-**Measuring a run.** Pass `measure=True` to `run`, `run_from_dataset` or `split.run`. `result.measurements` contains the shared tuning time (including cache lookup, when applicable) and a record per seed. Each record gives adapter initialization, the complete fit call, the test prediction call and test time scaled to 1,000 rows. Prediction timing includes work inside the adapter's test call and excludes the evaluator's separate validation call for threshold selection. Where instrumented, `load_seconds` measures backend initialization with checkpoint loading and overlaps the fit time. These times reflect the current cache state.
+**Measuring a run.** Every Python run reports elapsed seconds for the complete adapter fit and test prediction calls in `result.fit_time` and `result.predict_time`. Multiple seeds return the mean and preserve individual times in `result.per_seed`. Both CLIs use the same timers. CUDA timings synchronise the configured device. Test timing includes preprocessing and metrics inside the adapter's prediction call and excludes the evaluator's separate threshold search. For ICL methods, fit time measures support preparation and any loading performed during fit. Older versions relied on adapter-specific timings, so historical times can differ.
+
+Pass `measure=True` for initialization, shared tuning time (including cache lookup), memory and provenance. Where instrumented, `load_seconds` measures backend initialization with checkpoint loading and overlaps fit time.
 
 The record includes the PyTorch version, CUDA device name, fitted model device, optional backend version and checkpoint identity where observable. Set `hash_checkpoint=True` to hash a resolved local checkpoint file. Memory values are sampled peaks for the current process (RSS with optional `psutil`) and PyTorch allocations on the configured CUDA device. Short-lived allocations can fall between samples. Use one process per run for comparable memory measurements.
 
 Set `capture_support_ids=True` on a measured `split.run` to retain the ordered IDs selected by TALENT's shared support sampler. Its `sample_size` option accepts a row count or a fraction for both classification and regression. Mitra also records the context passed to each test query after its inference cap. External backends can perform further per-query retrieval. Unavailable observations are `None`.
 
 **Comparing methods.** Supply the full planned dataset and split schedule, including runs that produced no result. Record an unsuccessful run with `dataset`, `split_id`, `method`, `status` (`"failed"` or `"skipped"`) and an optional `reason`. The report lists every planned cell, including missing and non-finite results. Rankings use splits completed by every method, average splits within each dataset, then weight datasets equally. Fit and prediction cost use the same cells and include their measurement counts. Each reference comparison uses its own matched splits and reports per-dataset differences plus a paired Student *t* interval when at least two datasets contribute. These are unadjusted intervals across dataset means. Set `higher_is_better=False` for a loss. Positive differences always favor the method being compared with the reference.
+
+#### Cross-validation
+
+Use the row IDs, feature arrays and task information from the example above. The same runner accepts classical, neural and foundation model IDs.
+
+```python
+import TALENT
+
+cv_result = TALENT.cross_validate(
+    "LogReg", ids, X, None, y, info, cv=5, split_seed=42, device="cpu",
+    threshold_cv=3, threshold_metric="f1",
+)
+print(cv_result.metrics_mean)
+row_ids, probabilities = cv_result.out_of_fold("predict_proba")
+```
+
+For a TALENT-format dataset on disk, use `TALENT.cross_validate_from_dataset("LogReg", "bank", "./example_datasets", cv=5)`. It pools the supplied training and validation rows for CV and reserves the original test set. Row IDs such as `train/0` refer to positions in that dataset version. Supply any group or timestamp metadata in training-then-validation order.
+
+- **Outer folds.** Ordinary classification uses stratified folds and regression uses shuffled folds. Pass `groups=group_ids` to keep entire groups together, or `timestamps=dates` for expanding-window evaluation. Equal timestamps stay together. Optional `gap=k` leaves `k` distinct timestamp blocks between training and validation and between validation and test. Initial history and gap rows receive predictions only if they later appear in a test fold.
+- **Model and threshold selection.** Each fit reserves `val_fraction` (default 0.2) of its development rows, groups or time blocks for validation. Optuna uses this partition when `tune=True`, for example with `n_trials=20, tune_metric="AUC"`. By default, binary classifiers also select their threshold on validation. Set `threshold_cv=3` to pool out-of-fold probabilities from three inner fits on outer development data and choose one threshold per seed. Inner fits have their own validation data, group or time boundaries, and HPO directories. The final fit uses the outer training and validation partitions and applies that threshold to the outer test predictions. `tune_threshold=False` disables selection.
+- **Results and cost.** `results` contains one standard `RunResult` per outer fold. `metrics_mean` averages the seed-averaged metrics across folds with equal weight. `out_of_fold()` returns scored row IDs alongside last-seed predictions. `fold_seconds` includes all inner fits, HPO, threshold selection and the final outer run. Five outer folds with three inner threshold folds require twenty runner calls before counting HPO trials or multiple seeds.
+- **Replaying folds.** Inspect `splits` and `threshold_splits` on the result, or call `TALENT.make_folds()` to plan folds before fitting. Save a fold with `split.save(path)`. To replay an inner or temporal manifest against the full source table, call `split.run(..., allow_extra_rows=True)`. To reuse a completed fold's inner-selected thresholds, also pass the same seeds and settings and `decision_threshold={s["seed"]: s["threshold"] for s in fold_result.per_seed}`. Each CV invocation creates a fresh subdirectory under `save_path` for its checkpoints and tuned configurations.
 
 #### Selecting a foundation model release
 
@@ -357,6 +382,8 @@ print(supported_tune_metrics())
 `None`, which preserves the previous behavior exactly. A few methods optimize an
 internal training loss and do not accept it (`tabnet`, `ptarl`, `tabcaps`); use
 the default for those.
+
+Native CV checks that the requested HPO metric applies to the task. For AUC it requires every class in each model-selection validation fold. For R2 it requires at least two validation rows. This is especially relevant for small grouped or chronological folds.
 
 Introspect or filter methods via the unified registry:
 

@@ -38,6 +38,10 @@ __version__ = "0.1.0"
 # Each name is resolved on first access via `__getattr__`.
 
 _LAZY_API = {
+    "cross_validate": "TALENT.benchmark",
+    "CrossValidationResult": "TALENT.benchmark",
+    "cross_validate_from_dataset": "TALENT.benchmark",
+    "make_folds": "TALENT.benchmark",
     "run": "TALENT.api",
     "run_from_dataset": "TALENT.api",
     "build_args": "TALENT.api",
