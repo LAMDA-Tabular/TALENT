@@ -512,7 +512,19 @@ Both the CLI scripts and the Python API are backed by the same `MethodSpec` regi
 
 The `train_row_limit` field in `TALENT.get_method_spec(name)` gives the training-row ceiling used by TALENT. The adapter applies its ceiling to each training fold before fitting preprocessing. Set `config['general']['sample_size']` to request a smaller context. Use `config['general']['n_estimators']` to set the ensemble size when the method supports it.
 
-TALENT's zero-shot Mitra and Mitra-v2 adapters currently cap training at 10,000 rows and use at most 8,192 rows as prediction support by default. The authors' separate [Mitra-v2 evaluation recipe](https://arxiv.org/html/2609.04540v1#S3.SS1) uses larger support sets with fine-tuning and bagging.
+The ceilings below describe TALENT's adapters. Model authors report recommended sizes and measured operating points, which can depend on feature count, device and inference options.
+
+| Adapter | TALENT training ceiling | Basis |
+| --- | ---: | --- |
+| TabPFN v1 | 1,000 | [Original evaluation range](https://arxiv.org/abs/2207.01848). |
+| TabPFN v2 and Real-TabPFN v2 | 10,000 | [TabPFN v2 evaluation range](https://www.nature.com/articles/s41586-024-08328-6). Real-TabPFN uses the v2 adapter and [its pinned checkpoint filename](https://huggingface.co/Prior-Labs/TabPFN-v2-clf). |
+| TabPFN v2.5 | 50,000 | The [release report](https://storage.googleapis.com/prior-labs-tabpfn-public/reports/TabPFN_2_5_tech_report.pdf) gives 50,000 as its design target and reports results up to 100,000. |
+| TabPFN 3 and 3.5 | 1,000,000 | The [TabPFN-3 report](https://priorlabs.ai/technical-reports/tabpfn-3) and [TabPFN-3.5 report](https://storage.googleapis.com/prior-labs-tabpfn-public/reports/tabpfn-v3.5-report.pdf) demonstrate this scale on GPUs. The joint row and feature budgets differ across versions. |
+| TabICL v1.1 and v2 | 500,000 and 1,000,000 | [Authors' scalability guidance](https://github.com/soda-inria/tabicl#faq) for offloaded inference. These are resource-dependent operating points. |
+| Mitra v1 | 10,000 | [AutoGluon's v1 fit guard](https://auto.gluon.ai/stable/tutorials/tabular/tabular-foundational-models.html). The TALENT adapter uses at most 8,192 rows as prediction support by default. |
+| Mitra-v2 | 10,000 | TALENT's zero-shot adapter reuses Mitra v1's training ceiling and 8,192-row default support setting. The authors' [fine-tuned and bagged release recipe](https://arxiv.org/html/2609.04540v1#S3.SS1) uses up to 16,384 support rows for binary classification and 32,768 for multiclass classification and regression. |
+
+A registry entry without a ceiling can still have backend-specific context choices and memory constraints. See the model's own documentation for its supported operating range.
 
 **Pre-trained weights.** Foundation models download their weights automatically on first use (from the Hugging Face Hub, or figshare for HyperFast) unless the checkpoint is bundled under `TALENT/model/models/`; `TALENT.get_method_spec(name).weights` states the source of each model. If loading the weights fails, the error names the source and the usual fixes:
 

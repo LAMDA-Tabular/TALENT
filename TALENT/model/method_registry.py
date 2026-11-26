@@ -409,7 +409,7 @@ _METHODS_DEEP = [
           weights="Downloaded automatically from Hugging Face (Prior-Labs/TabPFN-v2-clf, "
                   "tabpfn-v2-classifier-finetuned-zk73skhh.ckpt) unless bundled under "
                   "TALENT/model/models/models_tabpfn/.",
-          notes="Real-TabPFN (continued pre-training on real datasets); classification only."),
+          notes="Real-TabPFN uses the historical TabPFN v2 checkpoint filename; classification only."),
     _spec("tabpfn_v2_5", "TALENT.model.methods.tabpfn_v2_5", "TabPFNv2_5Method",
           _DEEP, _GPU, _PROBS, cat_policy=("indices",),
           normalization="none", num_policy="none",
@@ -417,7 +417,7 @@ _METHODS_DEEP = [
           backend_distribution="tabpfn",
           weights=_TABPFN_WEIGHTS,
           notes="TabPFN v2.5 (PriorLabs Nov 2025; external `tabpfn>=8.0.0`, pinned via "
-                "ModelVersion.V2_5). ~50k rows x 2k features native context."),
+                "ModelVersion.V2_5). TALENT uses the original 50k-row design target."),
     _spec("tabpfn_v3", "TALENT.model.methods.tabpfn_v3", "TabPFNv3Method",
           _DEEP, _GPU, _PROBS, cat_policy=("indices",),
           normalization="none", num_policy="none",
@@ -433,7 +433,8 @@ _METHODS_DEEP = [
           backend_distribution="tabpfn",
           weights=_TABPFN_WEIGHTS,
           notes="TabPFN-3.5 (PriorLabs Sep 2026; external `tabpfn>=9.0.0`). "
-                "~1M rows x 20k features; set general.fast for TabPFN-3.5-Fast."),
+                "Up to 1M training rows within the device's memory budget; "
+                "set general.fast for TabPFN-3.5-Fast."),
     _spec("hyperfast", "TALENT.model.methods.hyperfast", "HyperFastMethod",
           _DEEP, _GPU, _PROBS, cat_policy=("indices",),
           normalization="none", num_policy="none",
@@ -476,8 +477,8 @@ _METHODS_DEEP = [
           supports_hpo=False, train_row_limit=10_000,
           weights="Downloaded automatically from Hugging Face (autogluon/mitra-classifier-2, "
                   "autogluon/mitra-regressor-2) unless bundled under TALENT/model/models/models_mitra_v2/.",
-          notes="Mitra-v2 (AutoGluon, Sep 2026), zero-shot via the bundled Mitra code; the "
-                "1000-bin regression head is decoded with the mean over bins."),
+          notes="Mitra-v2 (AutoGluon, Sep 2026), zero-shot via the bundled Mitra code with "
+                "TALENT's 10k training ceiling and 8192-row default prediction context."),
     _spec("limix", "TALENT.model.methods.limix", "LimiXMethod",
           _DEEP, _GPU, _PROBS, cat_policy=("indices",),
           normalization="none", num_policy="none",
