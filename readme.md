@@ -307,6 +307,10 @@ For an existing pipeline that applies its own per-fold preprocessing, import
 `TALENT.benchmark`. They return ordered training, validation, and test row
 positions. Both interpret the validation fraction relative to the
 development partition. The single holdout accepts an explicit validation seed.
+To enforce a ceiling before your own preprocessing, call
+`subsample_fold_training_indices(train, limit=cap, seed=fold_seed)` after
+splitting. Pass `labels=y[train]` for proportional sampling by class. Use the
+original validation and test indices.
 
 **Choosing a split.** Pass `groups=` to keep whole groups together or `timestamps=` for chronological training, validation and test periods. Equal timestamps stay together. Validation and test fractions apply to the number of rows, groups or distinct timestamps, respectively. `with_context(k)` selects nested training subsets and preserves both holdouts. Temporal contexts use the most recent training rows. For classification, check class coverage when choosing small contexts. You can also construct `BenchmarkSplit(train, val, test, context)` with your own ordered ID sequences. The manifest stores IDs in plain text and fingerprints their assignments and order. Use non-sensitive IDs and record the dataset version separately. Replaying the manifest accepts reordered source data and checks that the row IDs match.
 
@@ -506,7 +510,9 @@ for s in TALENT.list_methods(
 
 Both the CLI scripts and the Python API are backed by the same `MethodSpec` registry, which dispatches to the registered adapter. New adapters also need default and search-space configurations.
 
-The registry records foundation-model training-row ceilings (`train_row_limit`): TabPFN 1k, TabPFN v2 / Real-TabPFN / Mitra / Mitra-v2 10k, TabPFN v2.5 50k, TabICL 500k, and TabPFN v3 / TabPFN-3.5 / TabICL v2 1M. The adapter selects this context before fitting preprocessing. Set `config['general']['sample_size']` to request a smaller context. Backends can apply further context selection internally. Use `config['general']['n_estimators']` to set the ensemble size when the method supports it.
+The `train_row_limit` field in `TALENT.get_method_spec(name)` gives the training-row ceiling used by TALENT. The adapter applies its ceiling to each training fold before fitting preprocessing. Set `config['general']['sample_size']` to request a smaller context. Use `config['general']['n_estimators']` to set the ensemble size when the method supports it.
+
+TALENT's zero-shot Mitra and Mitra-v2 adapters currently cap training at 10,000 rows and use at most 8,192 rows as prediction support by default. The authors' separate [Mitra-v2 evaluation recipe](https://arxiv.org/html/2609.04540v1#S3.SS1) uses larger support sets with fine-tuning and bagging.
 
 **Pre-trained weights.** Foundation models download their weights automatically on first use (from the Hugging Face Hub, or figshare for HyperFast) unless the checkpoint is bundled under `TALENT/model/models/`; `TALENT.get_method_spec(name).weights` states the source of each model. If loading the weights fails, the error names the source and the usual fixes:
 

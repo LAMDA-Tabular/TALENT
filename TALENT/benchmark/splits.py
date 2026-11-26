@@ -199,6 +199,43 @@ def shuffled_holdout_indices(n_rows, *, test_fraction=0.2, val_fraction=0.2,
     return train, val, test
 
 
+def subsample_fold_training_indices(train_indices, *, limit, seed=0, labels=None):
+    """Cap an existing training fold before downstream preprocessing.
+
+    ``labels``, when supplied, align with ``train_indices``. Rounded class
+    quotas and the sample order make this policy reproducible for positional
+    folds. Set the seed per fold if distinct draws are needed.
+    """
+    if limit is None:
+        return train_indices
+    if isinstance(limit, bool) or not isinstance(limit, Integral) or limit < 1:
+        raise ValueError("limit must be a positive integer or None")
+    if len(train_indices) <= limit:
+        return train_indices
+
+    rows = np.asarray(train_indices)
+    rng = np.random.default_rng(seed)
+    if labels is None:
+        return rows[rng.choice(len(rows), size=limit, replace=False)]
+
+    labels = np.asarray(labels)
+    if labels.shape != rows.shape or rows.ndim != 1:
+        raise ValueError("labels must contain one value per training index")
+    classes, counts = np.unique(labels, return_counts=True)
+    quotas = np.round((counts / len(rows)) * limit).astype(int)
+    while quotas.sum() > limit:
+        quotas[np.argmax(quotas)] -= 1
+    while quotas.sum() < limit:
+        quotas[np.argmin(quotas)] += 1
+    selected = []
+    for label, quota in zip(classes, quotas):
+        members = np.flatnonzero(labels == label)
+        selected.append(rng.choice(members, size=min(quota, len(members)), replace=False))
+    positions = np.concatenate(selected)
+    rng.shuffle(positions)
+    return rows[positions]
+
+
 def _limit_rows(rows, limit, rng, stratify, timestamps, name):
     if limit is None:
         return rows
