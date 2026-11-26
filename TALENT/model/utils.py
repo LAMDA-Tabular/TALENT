@@ -243,8 +243,15 @@ def sample_parameters(trial, space, base_config):
     :return: dict, sampled hyper-parameters
     """
 
-    def get_distribution(distribution_name):
-        return getattr(trial, f'suggest_{distribution_name}')
+    def suggest(distribution, label, *args):
+        if distribution == "uniform":
+            return trial.suggest_float(label, *args)
+        if distribution == "loguniform":
+            return trial.suggest_float(label, *args, log=True)
+        if distribution == "discrete_uniform":
+            low, high, step = args
+            return trial.suggest_float(label, low, high, step=step)
+        return getattr(trial, f'suggest_{distribution}')(label, *args)
 
     result = {}
     for label, subspace in space.items():
@@ -257,7 +264,7 @@ def sample_parameters(trial, space, base_config):
             if distribution.startswith('?'):
                 default_value = args[0]
                 result[label] = (
-                    get_distribution(distribution.lstrip('?'))(label, *args[1:])
+                    suggest(distribution.lstrip('?'), label, *args[1:])
                     if trial.suggest_categorical(f'optional_{label}', [False, True])
                     else default_value
                 )
@@ -287,10 +294,10 @@ def sample_parameters(trial, space, base_config):
             elif distribution in ['$d_ffn_factor', '$d_hidden_factor']:
                 if base_config['model']['activation'].endswith('glu'):
                     args = (args[0] * 2 / 3, args[1] * 2 / 3)
-                result[label] = trial.suggest_uniform('d_ffn_factor', *args)
+                result[label] = trial.suggest_float('d_ffn_factor', *args)
 
             else:
-                result[label] = get_distribution(distribution)(label, *args)
+                result[label] = suggest(distribution, label, *args)
     return result
 
 
@@ -365,6 +372,8 @@ def get_classical_args():
 
     # other choices
     parser.add_argument('--n_trials', type=int, default=default_args['n_trials'])
+    parser.add_argument('--hpo_timeout', type=float, default=None,
+                        help='Optional Optuna time budget in seconds per search.')
     parser.add_argument('--tune_metric', type=str, default=None,
                         help="HPO objective metric (e.g. AUC, R2, RMSE, LogLoss). "
                              "None keeps the legacy default (Accuracy / MAE-RMSE).")
@@ -457,6 +466,8 @@ def get_deep_args():
 
     # other choices
     parser.add_argument('--n_trials', type=int, default=default_args['n_trials'])
+    parser.add_argument('--hpo_timeout', type=float, default=None,
+                        help='Optional Optuna time budget in seconds per search.')
     parser.add_argument('--tune_metric', type=str, default=None,
                         help="HPO objective metric (e.g. AUC, R2, RMSE, LogLoss). "
                              "None keeps the legacy default (Accuracy / MAE-RMSE).")
@@ -642,7 +653,8 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info, *, score_candid
     import optuna.samplers
     import optuna.trial
     from TALENT.benchmark.scoring import Scorer
-    from TALENT.benchmark.study import run_trials
+    from TALENT.benchmark.study import run_trials, validate_hpo_budget
+    timeout = validate_hpo_budget(args)
     args.hpo_time = 0.0
     from TALENT.model.lib.tuning_metric import (
         validate_tune_metric, assert_tune_metric_supported, resolve_tune_metric,
@@ -842,7 +854,7 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info, *, score_candid
         )
         run_trials(
             study, objective, args,
-            n_trials=args.n_trials, catch=(Exception,),
+            n_trials=args.n_trials, timeout=timeout, catch=(Exception,),
             show_progress_bar=True,
         )
         if not study.get_trials(deepcopy=False, states=(optuna.trial.TrialState.COMPLETE,)):

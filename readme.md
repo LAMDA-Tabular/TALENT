@@ -352,6 +352,8 @@ Set `resume_dir` to an empty local directory, then repeat the same call there af
 
 One process owns each resume directory at a time. TALENT checks input contents, split assignments, configuration, source, runtime and recognised local checkpoint paths before reusing results. Use `resume_key` to identify external model or data revisions that the backend resolves independently. A changed protocol or trial budget uses a new directory. Persisted results contain per-row predictions and exclude live fitted estimators. The normal `save_path` workflow continues to create fresh runs.
 
+Use `hpo_timeout=300` in Python or `--hpo_timeout 300` on the CLI to limit each Optuna search to five minutes. TALENT stops starting new trials at the trial or time limit. Running trials can finish after the budget. Final fitting is outside that budget. Persistent CV subtracts the recorded duration of previous finished trials from the allowance.
+
 Completed trials and recorded candidate failures count toward `n_trials`. An abandoned trial is replaced. Future TPE proposals can differ from an uninterrupted search. Recovered fold time includes the recorded duration of earlier completed trials and fits. The CV result’s `hpo_time` sums the searches for every outer fold and its inner threshold fits. Restoring a completed fold preserves its recorded HPO time. Partial work in a killed trial has no reliable duration. With `measure=True`, `tuning_seconds` records the current tuning call and `recovered_trial_seconds` records prior trial time.
 
 #### Selecting a foundation model release
@@ -386,6 +388,8 @@ Preflight reads registry and installed-package metadata and checks the existence
 
 By default the hyperparameter search optimizes TALENT's historical objective
 (validation **Accuracy** for classification, **MAE / RMSE** for regression).
+With `tune=False`, TALENT fits once per model seed using the method configuration under `TALENT/configs/default/`, or the configuration supplied by the caller. Optuna samples the separate distributions under `TALENT/configs/opt_space/`; the default configuration does not enter the study automatically.
+
 Pass `tune_metric` to optimize any metric that `Method.metric` reports instead;
 the optimization direction is inferred automatically.
 

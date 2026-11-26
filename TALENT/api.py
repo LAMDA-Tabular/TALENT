@@ -420,6 +420,9 @@ def run(
     tune : bool, optional
         If True and the method supports HPO, run Optuna tuning first. Defaults
         to False when `args` is not supplied.
+    hpo_timeout : float, optional keyword
+        Time budget in seconds for each Optuna search. An in-progress trial may
+        finish after the budget. The final fit is outside the budget.
     n_trials : int, optional
         Optuna trial budget (when tune=True). Defaults to 50 when `args` is
         not supplied.

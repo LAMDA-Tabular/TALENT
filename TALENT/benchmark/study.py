@@ -2,7 +2,7 @@
 
 from copy import deepcopy
 from math import isfinite
-from numbers import Integral
+from numbers import Integral, Real
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -11,6 +11,19 @@ from optuna.trial import TrialState
 
 from .measurement import elapsed_call
 from .scoring import Scorer
+
+
+def validate_hpo_budget(args):
+    budget = args.n_trials
+    if isinstance(budget, bool) or not isinstance(budget, Integral) or budget < 1:
+        raise ValueError("n_trials must be a positive integer")
+    timeout = getattr(args, "hpo_timeout", None)
+    if timeout is not None and (
+        isinstance(timeout, bool) or not isinstance(timeout, Real)
+        or not isfinite(timeout) or timeout <= 0
+    ):
+        raise ValueError("hpo_timeout must be a finite positive number of seconds")
+    return timeout
 
 
 def run_trials(study, objective, args, **options):
@@ -25,8 +38,7 @@ def optimize_candidates(args, info, train_val, direction, sample_config, score_c
     from TALENT.model.utils import get_method, set_seeds
 
     budget = args.n_trials
-    if isinstance(budget, bool) or not isinstance(budget, Integral) or budget < 1:
-        raise ValueError("n_trials must be a positive integer")
+    timeout = validate_hpo_budget(args)
     storage = None
     if persist:
         db = Path(args.save_path).resolve() / "study.sqlite3"
@@ -38,17 +50,16 @@ def optimize_candidates(args, info, train_val, direction, sample_config, score_c
                                 sampler=optuna.samplers.TPESampler(seed=0), load_if_exists=persist)
     try:
         history = study.get_trials(deepcopy=False)
+        finished = [t for t in history if t.state == TrialState.COMPLETE or
+                    (t.state == TrialState.FAIL and "error" in t.user_attrs)]
+        prior_seconds = sum(t.duration.total_seconds() for t in finished if t.duration is not None)
         if recovery is not None:
-            recovery["trial_seconds"] = sum(
-                t.duration.total_seconds() for t in history if t.duration is not None and
-                (t.state == TrialState.COMPLETE or (t.state == TrialState.FAIL and "error" in t.user_attrs))
-            )
+            recovery["trial_seconds"] = prior_seconds
         for old in history:
             if old.state == TrialState.RUNNING:
                 # The benchmark directory is exclusively locked by the current worker.
                 study.tell(old.number, state=TrialState.FAIL)
-        used = sum(t.state == TrialState.COMPLETE or
-                   (t.state == TrialState.FAIL and "error" in t.user_attrs) for t in history)
+        used = len(finished)
         if history:
             # A fresh sampler seeded at zero would replay its startup draws.
             study = optuna.load_study(storage=storage, study_name="tuning",
@@ -85,8 +96,9 @@ def optimize_candidates(args, info, train_val, direction, sample_config, score_c
                 trial.set_user_attr("error", f"{type(exc).__name__}: {exc}")
                 raise
 
-        if budget > used:
-            run_trials(study, objective, args, n_trials=budget - used, catch=(Exception,))
+        remaining = None if timeout is None else timeout - prior_seconds
+        if budget > used and (remaining is None or remaining > 0):
+            run_trials(study, objective, args, n_trials=budget - used, timeout=remaining, catch=(Exception,))
         if not study.get_trials(deepcopy=False, states=(TrialState.COMPLETE,)):
             failures = study.get_trials(deepcopy=False, states=(TrialState.FAIL,))
             reason = failures[-1].user_attrs.get("error", "interrupted trial") if failures else "no trials"

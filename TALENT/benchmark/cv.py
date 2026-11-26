@@ -21,11 +21,13 @@ def _fold_count(value, name):
 
 
 def make_folds(row_ids, *, cv=5, val_fraction=0.2, seed=0, stratify=None,
-               groups=None, timestamps=None, gap=0):
+               groups=None, timestamps=None, gap=0, vary_validation_seed=False):
     """Build outer test folds, each with its own training and validation partition.
 
     Grouped folds split whole groups. Temporal folds expand forward through
     distinct timestamps. The gap counts timestamp blocks at both boundaries.
+    Set vary_validation_seed=True to add the one-based fold number to the seed
+    for each shuffled validation split. Outer test folds use the original seed.
     """
     from sklearn.model_selection import KFold, StratifiedKFold, TimeSeriesSplit, train_test_split
 
@@ -68,15 +70,19 @@ def make_folds(row_ids, *, cv=5, val_fraction=0.2, seed=0, stratify=None,
             selection = np.concatenate([ordered[offsets[u]:offsets[u + 1]] for u in selection])
         return tuple(ids[selection])
 
+    if vary_validation_seed and seed is None and not temporal:
+        raise ValueError("vary_validation_seed requires a fixed seed")
+
     folds = []
-    for development, test in partitions:
+    for fold_number, (development, test) in enumerate(partitions, start=1):
         if temporal:
             boundary = len(development) - int(np.ceil(len(development) * val_fraction))
             if boundary <= gap:
                 raise ValueError("temporal fold has too little training history for validation and gap")
             train, val = development[:boundary - gap], development[boundary:]
         else:
-            train, val = train_test_split(development, test_size=val_fraction, random_state=seed,
+            validation_seed = seed + fold_number if vary_validation_seed else seed
+            train, val = train_test_split(development, test_size=val_fraction, random_state=validation_seed,
                                           stratify=None if labels is None else labels[development])
         train_ids = members(train)
         folds.append(BenchmarkSplit(train_ids, members(val), members(test), train_ids, strategy))
@@ -138,7 +144,8 @@ def _score_folds(trial, args, config, *, method, folds, data, metric):
 
 def cross_validate(method, row_ids, N, C, y, info, *, cv=5, split_seed=0, val_fraction=0.2,
                    groups=None, timestamps=None, gap=0, threshold_cv=None, hpo_cv=None,
-                   save_path=None, resume_dir=None, resume_key=None, **options):
+                   save_path=None, resume_dir=None, resume_key=None,
+                   vary_validation_seed=False, **options):
     """Evaluate one method with TALENT.run on disjoint outer test folds.
 
     Classification uses stratification for ordinary shuffled folds. Supply
@@ -148,7 +155,8 @@ def cross_validate(method, row_ids, N, C, y, info, *, cv=5, split_seed=0, val_fr
     on held-out inner folds. Each candidate fit has its own validation data
     for early stopping. Use resume_dir for durable fold results and Optuna
     history. Repeat the same call to continue an interrupted benchmark.
-    resume_key can identify external data or model revisions.
+    resume_key can identify external data or model revisions. Set
+    vary_validation_seed=True to offset the seed for each shuffled validation fold.
     """
     from TALENT import get_method_spec
     from TALENT.model.method_registry import OutputType
@@ -176,7 +184,7 @@ def cross_validate(method, row_ids, N, C, y, info, *, cv=5, split_seed=0, val_fr
         return make_folds(
             [ids[i] for i in indices], cv=count, seed=split_seed, val_fraction=val_fraction, gap=gap,
             stratify=labels[indices] if classification and groups is None and timestamps is None else None,
-            groups=None if groups is None else groups[indices],
+            vary_validation_seed=vary_validation_seed, groups=None if groups is None else groups[indices],
             timestamps=None if timestamps is None else timestamps[indices],
         )
 
