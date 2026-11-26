@@ -281,7 +281,9 @@ class ExcelFormer(nn.Module):
     
     def forward(self, x_num:Tensor,x_cat = None,mix_up: bool=False, beta=0.5, mtype='feat_mix') -> Tensor:
 
-        if mtype == 'niave_mix': # naive mixup
+        if mtype == 'naive_mix':
+            mtype = 'niave_mix'  # Keep accepting the historical spelling.
+        if mix_up and mtype == 'niave_mix':
             x_num, feat_masks, shuffled_ids = mixup_data(x_num, beta=beta)
         x = self.tokenizer(x_num) # TODO: replace with PWE  b. f -> b,f ,d
         if mix_up and mtype != 'niave_mix':

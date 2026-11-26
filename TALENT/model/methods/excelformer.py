@@ -59,7 +59,12 @@ class ExcelFormerMethod(Method):
         self.data_format(is_train = True)
         mi_scores = mi_func(self.N['train'].cpu().numpy(), self.y['train'].cpu().numpy())
         mi_ranks = np.argsort(-mi_scores)
-        self.sorted_mi_scores = torch.from_numpy(mi_scores[mi_ranks] / mi_scores.sum()).to(torch.float64).to(self.args.device)
+        self.sorted_mi_scores = torch.from_numpy(mi_scores[mi_ranks]).to(device=self.args.device, dtype=torch.float64)
+        total = self.sorted_mi_scores.sum()
+        if total > 0:
+            self.sorted_mi_scores /= total
+        else:
+            self.sorted_mi_scores.fill_(1 / self.sorted_mi_scores.numel())
         
         self.construct_model()
         self.optimizer = torch.optim.AdamW(
@@ -103,22 +108,19 @@ class ExcelFormerMethod(Method):
             if self.mix_type == 'none':
                 loss = self.criterion(self.model(X_num, X_cat,mix_up=False), y)
             else:
-                preds, feat_masks, shuffled_ids = self.model(X_num, X_cat,mix_up=True)
-                if self.mix_type == 'feat_mix':
-                    lambdas = (self.sorted_mi_scores * feat_masks).sum(1) # bs
-                    lambdas2 = 1 - lambdas
-                elif self.mix_type == 'hidden_mix':
-                    lambdas = feat_masks
-                    lambdas2 = 1 - lambdas
-                elif self.mix_type == 'niave_mix':
-                    lambdas = feat_masks
-                    lambdas2 = 1 - lambdas
+                preds, mix_weights, shuffled_ids = self.model(
+                    X_num, X_cat, mix_up=True, mtype=self.mix_type
+                )
+                lambdas = ((self.sorted_mi_scores * mix_weights).sum(1)
+                           if self.mix_type == 'feat_mix' else mix_weights)
+                lambdas2 = 1 - lambdas
                 if self.is_regression:
                     mix_y = lambdas * y + lambdas2 * y[shuffled_ids]
                     loss = self.criterion(preds, mix_y)
                 else:
-                    loss = lambdas * self.criterion(preds, y) + lambdas2 * self.criterion(preds, y[shuffled_ids])
-                    loss = loss.mean()
+                    original = self.criterion(preds, y, reduction="none")
+                    shuffled = self.criterion(preds, y[shuffled_ids], reduction="none")
+                    loss = (lambdas * original + lambdas2 * shuffled).mean()
             tl.add(loss.item())
             self.optimizer.zero_grad()
             loss.backward()
