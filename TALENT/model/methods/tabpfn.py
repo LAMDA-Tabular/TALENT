@@ -57,7 +57,6 @@ class TabPFNMethod(Method):
         self.N, self.C, self.y = self.D.N, self.D.C, self.D.y
         self.is_binclass, self.is_multiclass, self.is_regression = self.D.is_binclass, self.D.is_multiclass, self.D.is_regression
         self.data_format(is_train = True)
-        self.construct_model()
 
         sampled_Y = self.y['train']
         if self.N is not None and self.C is not None:
@@ -66,6 +65,15 @@ class TabPFNMethod(Method):
             sampled_X = self.C['train']
         else:
             sampled_X = self.N['train']
+        from TALENT.model.method_registry import get_method_spec
+
+        max_features = get_method_spec("tabpfn").max_features
+        if sampled_X.shape[1] > max_features:
+            raise ValueError(
+                f"TabPFN v1 supports up to {max_features} features after preprocessing; "
+                f"received {sampled_X.shape[1]}."
+            )
+        self.construct_model()
         # Row cap: config['general']['sample_size'] override, else the
         # registry's train_row_limit. Stratified to keep class proportions.
         sampled_X, sampled_Y = self.subsample_train_rows(sampled_X, sampled_Y)

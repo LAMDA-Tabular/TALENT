@@ -211,6 +211,7 @@ class MethodSpec:
     weights: Optional[str] = None
     notes: str = ""
     backend_distribution: Optional[str] = None
+    max_features: Optional[int] = None
 
     def backend_version(self) -> Optional[str]:
         """Installed optional backend version, if declared and discoverable."""
@@ -229,6 +230,8 @@ class MethodSpec:
             "supports_regression": self.supports_regression,
             "supports_hpo": self.supports_hpo,
             "recommended_hardware": self.hardware.value,
+            "train_row_limit": self.train_row_limit,
+            "max_features": self.max_features,
             "backend_distribution": self.backend_distribution,
             "backend_version": self.backend_version(),
             "weights": self.weights,
@@ -389,7 +392,7 @@ _METHODS_DEEP = [
           _DEEP, _GPU, _PROBS, cat_policy=("indices",),
           normalization="none", num_policy="none",
           supports_hpo=False, supports_regression=False,
-          train_row_limit=1_000,
+          train_row_limit=1_000, max_features=100,
           weights="Bundled with TALENT (TALENT/model/models/models_tabpfn/).",
           notes="TabPFN v1 (bundled). Up to 1k samples; classification only."),
     _spec("tabpfn_v2", "TALENT.model.methods.tabpfn_v2", "TabPFNMethod",
@@ -559,7 +562,7 @@ _METHODS_DEEP = [
           _DEEP, _GPU, _PROBS, cat_policy=("indices",),
           normalization="none", num_policy="none",
           supports_hpo=False,
-          backend_distribution="tabldm",
+          backend_distribution="Xiaomi-TabLDM",
           weights="Downloaded automatically by the `tabldm` package from Hugging Face "
                   "(occams/Xiaomi-TabLDM).",
           notes="Xiaomi-TabLDM (Sep 2026; external `tabldm`, installed from GitHub)."),

@@ -1,3 +1,4 @@
+from copy import deepcopy
 import os
 import shutil
 import time
@@ -672,23 +673,13 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info, *, score_candid
         else '{}-tuned-{}.json'.format(args.model_type, tune_metric),
     )
 
+    search_space = deepcopy(opt_space[args.model_type])
+    encoding_section = "training" if "training" in search_space else "fit"
+    search_space.setdefault(encoding_section, {}).setdefault("n_bins", ["int", 2, 256])
+
     def sample_config(trial):
         config = {}
-        try:
-            opt_space[args.model_type]['training']['n_bins'] = [
-                "int",
-                2,
-                256
-            ]
-        except KeyError:
-            opt_space[args.model_type]['fit']['n_bins'] = [
-                "int",
-                2,
-                256
-            ]
-        merge_sampled_parameters(
-            config, sample_parameters(trial, opt_space[args.model_type], config)
-        )
+        merge_sampled_parameters(config, sample_parameters(trial, search_space, config))
         requested = getattr(args, 'device', None)
         if requested is None and getattr(args, 'gpu', None) in ('cpu', ''):
             requested = 'cpu'
@@ -835,10 +826,10 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info, *, score_candid
         is_reg = info['task_type'] == 'regression'
         direction = study_direction(args, is_reg)
         if is_reg:
-            for key in opt_space[args.model_type]['model'].keys():
-                if 'dropout' in key and '?' not in opt_space[args.model_type]['model'][key][0]:
-                    opt_space[args.model_type]['model'][key][0] = '?' + opt_space[args.model_type]['model'][key][0]
-                    opt_space[args.model_type]['model'][key].insert(1, 0.0)
+            for key in search_space['model'].keys():
+                if 'dropout' in key and '?' not in search_space['model'][key][0]:
+                    search_space['model'][key][0] = '?' + search_space['model'][key][0]
+                    search_space['model'][key].insert(1, 0.0)
 
         if benchmark_search:
             from TALENT.benchmark.study import optimize_candidates

@@ -152,18 +152,46 @@ def _unit_codes(values, n_rows, temporal):
 
 
 def make_split(row_ids, *, val_fraction=0.2, test_fraction=0.2, seed=0,
-               groups=None, timestamps=None):
+               groups=None, timestamps=None, stratify=None):
     """Split rows, whole groups, or whole timestamp blocks into train/val/test.
 
     Fractions apply to the number of split units. Temporal partitions are
     strictly ordered. Random and group splits randomize training-row order
-    for nested context prefixes. Supply stable, non-sensitive row IDs.
+    for nested context prefixes. Pass one class label per row as stratify
+    for a stratified random split. Supply stable, non-sensitive row IDs.
     """
     ids = _ids(row_ids, "dataset")
-    if groups is not None and timestamps is not None:
-        raise ValueError("choose either grouped or temporal splitting")
+    if sum(value is not None for value in (groups, timestamps, stratify)) > 1:
+        raise ValueError("choose one of stratify, groups or timestamps")
     if not (0 < val_fraction < 1 and 0 < test_fraction < 1 and val_fraction + test_fraction < 1):
         raise ValueError("validation and test fractions must be positive and leave training data")
+    if stratify is not None:
+        from sklearn.model_selection import train_test_split
+
+        labels = np.asarray(stratify)
+        if labels.shape != (len(ids),):
+            raise ValueError("stratify requires one class label per row")
+        rows = np.arange(len(ids))
+        n_test = int(np.ceil(len(ids) * test_fraction))
+        n_val = int(np.ceil(len(ids) * val_fraction))
+        if n_test + n_val >= len(ids):
+            raise ValueError("too few rows for three nonempty partitions")
+        development, test = train_test_split(
+            rows, test_size=n_test, random_state=seed, stratify=labels
+        )
+        train, val = train_test_split(
+            development, test_size=n_val, random_state=seed, stratify=labels[development]
+        )
+        classes = np.unique(labels)
+        if any(not np.array_equal(np.unique(labels[part]), classes) for part in (train, val, test)):
+            raise ValueError("every stratified partition needs all classes; adjust the fractions or supply more rows")
+
+        def row_ids_for(positions):
+            return tuple(ids[i] for i in positions)
+
+        train_ids = row_ids_for(train)
+        return BenchmarkSplit(train_ids, row_ids_for(val), row_ids_for(test), train_ids, "random")
+
     rng = np.random.default_rng(seed)
     strategy = "random"
     if groups is None and timestamps is None:
