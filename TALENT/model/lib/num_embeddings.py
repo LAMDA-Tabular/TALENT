@@ -174,9 +174,7 @@ def compute_bins(
             )
 
         if verbose:
-            if tqdm is None:
-                raise ImportError('If verbose is True, tqdm must be installed')
-            tqdm_ = tqdm
+            from tqdm import tqdm as tqdm_
         else:
             tqdm_ = lambda x: x  # noqa: E731
 

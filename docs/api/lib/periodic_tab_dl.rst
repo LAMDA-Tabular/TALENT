@@ -1,5 +1,5 @@
 **Periodic Tab DL**
-==================
+===================
 
 Periodic Tab DL provides Fourier-based feature encoding and periodic neural networks for tabular data processing.
 

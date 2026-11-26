@@ -1,5 +1,5 @@
 **DANet**
-========
+=========
 
 A neural network designed to enhance tabular data processing by grouping correlated features and reducing computational complexity.
 

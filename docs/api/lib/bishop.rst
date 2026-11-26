@@ -1,5 +1,5 @@
 **BiSHop**
-=========
+==========
 
 An end-to-end framework for deep tabular learning which leverages a sparse Hopfield model with adaptable sparsity, enhanced by column-wise and row-wise modules.
 

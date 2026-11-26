@@ -1,3 +1,4 @@
+from copy import deepcopy
 import os
 import shutil
 import time
@@ -12,14 +13,25 @@ import os.path as osp
 THIS_PATH = os.path.dirname(__file__)
 
 
-def check_softmax(logits):
+def check_softmax(logits, *, model_type=None):
     """
-    Check if the logits are already probabilities, and if not, convert them to probabilities.
+    Convert classification scores to a probability matrix for metric calculation.
 
-    :param logits: np.ndarray of shape (N, C) with logits
+    :param logits: An (N, C) matrix, or one score per row for a binary task.
+        A matrix of probabilities may also be supplied directly.
+    :param model_type: Optional method ID used to interpret a binary vector
+        and to normalise outputs from probability-based methods.
     :return: np.ndarray of shape (N, C) with probabilities
     """
-    # Check if any values are outside the [0, 1] range and Ensure they sum to 1
+    from TALENT.model.lib.evaluation import standardize_predict_proba
+    from TALENT.model.method_registry import METHOD_REGISTRY, OutputType
+
+    spec = METHOD_REGISTRY.get(model_type)
+    if spec is not None and spec.output_type == OutputType.PROBABILITIES:
+        return standardize_predict_proba(logits, spec.output_type, is_regression=False)
+    if logits.ndim == 1 or (logits.ndim == 2 and logits.shape[1] == 1):
+        return standardize_predict_proba(logits, OutputType.LOGITS, is_regression=False)
+
     if np.any((logits < 0) | (logits > 1)) or (not np.allclose(logits.sum(axis=-1), 1, atol=1e-5)):
         exps = np.exp(logits - np.max(logits, axis=1, keepdims=True))  # stabilize by subtracting max
         return exps / np.sum(exps, axis=1, keepdims=True)
@@ -35,14 +47,18 @@ def probability_nll(probabilities, labels):
     probabilities: ``F.cross_entropy`` expects logits and would apply a second
     softmax on top of the probabilities.
 
-    :param probabilities: (N, K) array or tensor of class probabilities
+    :param probabilities: An (N, K) probability matrix or, for binary
+        classification, one positive-class probability per row.
     :param labels: (N,) integer class labels
     :return: float
     """
     if hasattr(probabilities, 'detach'):
         probabilities = probabilities.detach().cpu().numpy()
     p = torch.as_tensor(np.asarray(probabilities, dtype=np.float64))
-    y = torch.as_tensor(np.asarray(labels), dtype=torch.long).reshape(-1)
+    if p.ndim == 1 or (p.ndim == 2 and p.shape[1] == 1):
+        positive = p.reshape(-1)
+        p = torch.stack((1 - positive, positive), dim=1)
+    y = torch.as_tensor(labels, dtype=torch.long, device="cpu").reshape(-1)
     return torch.nn.functional.nll_loss(torch.log(p.clamp_min(1e-12)), y).item()
 
 
@@ -164,7 +180,9 @@ def set_seeds(base_seed: int, one_cuda_seed: bool = False) -> None:
             default_generator.manual_seed(cuda_seed + i)
 
 
-def get_device() -> torch.device:
+def get_device(device=None) -> torch.device:
+    if device is not None:
+        return torch.device(device)
     return torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
@@ -226,8 +244,15 @@ def sample_parameters(trial, space, base_config):
     :return: dict, sampled hyper-parameters
     """
 
-    def get_distribution(distribution_name):
-        return getattr(trial, f'suggest_{distribution_name}')
+    def suggest(distribution, label, *args):
+        if distribution == "uniform":
+            return trial.suggest_float(label, *args)
+        if distribution == "loguniform":
+            return trial.suggest_float(label, *args, log=True)
+        if distribution == "discrete_uniform":
+            low, high, step = args
+            return trial.suggest_float(label, low, high, step=step)
+        return getattr(trial, f'suggest_{distribution}')(label, *args)
 
     result = {}
     for label, subspace in space.items():
@@ -240,7 +265,7 @@ def sample_parameters(trial, space, base_config):
             if distribution.startswith('?'):
                 default_value = args[0]
                 result[label] = (
-                    get_distribution(distribution.lstrip('?'))(label, *args[1:])
+                    suggest(distribution.lstrip('?'), label, *args[1:])
                     if trial.suggest_categorical(f'optional_{label}', [False, True])
                     else default_value
                 )
@@ -270,10 +295,10 @@ def sample_parameters(trial, space, base_config):
             elif distribution in ['$d_ffn_factor', '$d_hidden_factor']:
                 if base_config['model']['activation'].endswith('glu'):
                     args = (args[0] * 2 / 3, args[1] * 2 / 3)
-                result[label] = trial.suggest_uniform('d_ffn_factor', *args)
+                result[label] = trial.suggest_float('d_ffn_factor', *args)
 
             else:
-                result[label] = get_distribution(distribution)(label, *args)
+                result[label] = suggest(distribution, label, *args)
     return result
 
 
@@ -290,6 +315,22 @@ def merge_sampled_parameters(config, sampled_parameters):
         else:
             # If there are parameters in the default config, the value of the parameter will be overwritten.
             config[k] = v
+
+
+def _apply_cli_preprocessing_defaults(args, defaults):
+    """Choose valid defaults for the selected method and validate explicit CLI flags."""
+    from TALENT.model.method_registry import get_method_spec
+
+    spec = get_method_spec(args.model_type)
+    if args.cat_policy is None:
+        args.cat_policy = defaults['cat_policy']
+        if spec.cat_policy is not None and args.cat_policy not in spec.cat_policy:
+            args.cat_policy = spec.cat_policy[0]
+    if args.normalization is None:
+        args.normalization = spec.normalization or defaults['normalization']
+    if args.num_policy is None:
+        args.num_policy = spec.num_policy or defaults['num_policy']
+    spec.validate_args(args)
 
 
 def get_classical_args():
@@ -316,15 +357,15 @@ def get_classical_args():
                         choices=classical_method_names())
 
     # optimization parameters 
-    parser.add_argument('--normalization', type=str, default=default_args['normalization'],
+    parser.add_argument('--normalization', type=str,
                         choices=['none', 'standard', 'minmax', 'quantile', 'maxabs', 'power', 'robust'])
     parser.add_argument('--num_nan_policy', type=str, default=default_args['num_nan_policy'],
                         choices=['mean', 'median'])
     parser.add_argument('--cat_nan_policy', type=str, default=default_args['cat_nan_policy'],
                         choices=['new', 'most_frequent'])
-    parser.add_argument('--cat_policy', type=str, default=default_args['cat_policy'],
+    parser.add_argument('--cat_policy', type=str,
                         choices=['indices', 'ordinal', 'ohe', 'binary', 'hash', 'loo', 'target', 'catboost'])
-    parser.add_argument('--num_policy', type=str, default=default_args['num_policy'],
+    parser.add_argument('--num_policy', type=str,
                         choices=['none', 'Q_PLE', 'T_PLE', 'Q_Unary', 'T_Unary', 'Q_bins', 'T_bins', 'Q_Johnson',
                                  'T_Johnson'])
     parser.add_argument('--n_bins', type=int, default=default_args['n_bins'])
@@ -332,6 +373,8 @@ def get_classical_args():
 
     # other choices
     parser.add_argument('--n_trials', type=int, default=default_args['n_trials'])
+    parser.add_argument('--hpo_timeout', type=float, default=None,
+                        help='Optional Optuna time budget in seconds per search.')
     parser.add_argument('--tune_metric', type=str, default=None,
                         help="HPO objective metric (e.g. AUC, R2, RMSE, LogLoss). "
                              "None keeps the legacy default (Accuracy / MAE-RMSE).")
@@ -343,10 +386,9 @@ def get_classical_args():
     parser.add_argument('--model_path', type=str, default=default_args['model_path'])
     parser.add_argument('--evaluate_option', type=str, default=default_args['evaluate_option'])
     args = parser.parse_args()
-    # Fail fast with a readable message (instead of a bare assert inside the
-    # method) when the preprocessing flags violate the method's requirements.
-    from TALENT.model.method_registry import get_method_spec
-    get_method_spec(args.model_type).validate_args(args)
+    if args.seed_num < 1:
+        parser.error("--seed_num must be a positive integer")
+    _apply_cli_preprocessing_defaults(args, default_args)
 
     set_gpu(args.gpu)
     save_path1 = '-'.join([args.dataset, args.model_type])
@@ -408,16 +450,16 @@ def get_deep_args():
     # optimization parameters
     parser.add_argument('--max_epoch', type=int, default=default_args['max_epoch'])
     parser.add_argument('--batch_size', type=int, default=default_args['batch_size'])
-    parser.add_argument('--normalization', type=str, default=default_args['normalization'],
+    parser.add_argument('--normalization', type=str,
                         choices=['none', 'standard', 'minmax', 'quantile', 'maxabs', 'power', 'robust', 'MncaPFN'])
     parser.add_argument('--num_nan_policy', type=str, default=default_args['num_nan_policy'],
                         choices=['mean', 'median'])
     parser.add_argument('--cat_nan_policy', type=str, default=default_args['cat_nan_policy'],
                         choices=['new', 'most_frequent'])
-    parser.add_argument('--cat_policy', type=str, default=default_args['cat_policy'],
+    parser.add_argument('--cat_policy', type=str,
                         choices=['indices', 'ordinal', 'ohe', 'binary', 'hash', 'loo', 'target', 'catboost',
                                  'tabr_ohe'])
-    parser.add_argument('--num_policy', type=str, default=default_args['num_policy'],
+    parser.add_argument('--num_policy', type=str,
                         choices=['none', 'Q_PLE', 'T_PLE', 'Q_Unary', 'T_Unary', 'Q_bins', 'T_bins', 'Q_Johnson',
                                  'T_Johnson'])
     parser.add_argument('--n_bins', type=int, default=default_args['n_bins'])
@@ -425,6 +467,8 @@ def get_deep_args():
 
     # other choices
     parser.add_argument('--n_trials', type=int, default=default_args['n_trials'])
+    parser.add_argument('--hpo_timeout', type=float, default=None,
+                        help='Optional Optuna time budget in seconds per search.')
     parser.add_argument('--tune_metric', type=str, default=None,
                         help="HPO objective metric (e.g. AUC, R2, RMSE, LogLoss). "
                              "None keeps the legacy default (Accuracy / MAE-RMSE).")
@@ -440,10 +484,9 @@ def get_deep_args():
     parser.add_argument('--use_float', action='store_true', default=False,
                         help='Use float32 instead of float64 for model and data (default: False)')
     args = parser.parse_args()
-    # Fail fast with a readable message (instead of a bare assert inside the
-    # method) when the preprocessing flags violate the method's requirements.
-    from TALENT.model.method_registry import get_method_spec
-    get_method_spec(args.model_type).validate_args(args)
+    if args.seed_num < 1:
+        parser.error("--seed_num must be a positive integer")
+    _apply_cli_preprocessing_defaults(args, default_args)
 
     set_gpu(args.gpu)
     save_path1 = '-'.join([args.dataset, args.model_type])
@@ -495,14 +538,22 @@ def show_results_classical(args, info, metric_name, results_list, time_list):
         for idx, name in enumerate(metric_name):
             metric_arrays[name].append(result[idx])
 
-    metric_arrays['Time'] = time_list
-    metric_name = metric_name + ('Time',)
+    if len(time_list) and isinstance(time_list[0], tuple):
+        fit_times, predict_times = zip(*time_list)
+        metric_arrays.update(Time=fit_times, Fit_Time=fit_times, Inference_Time=predict_times)
+        metric_name = metric_name + ('Time', 'Fit_Time', 'Inference_Time')
+    else:
+        metric_arrays['Time'] = time_list
+        metric_name = metric_name + ('Time',)
 
     mean_metrics = {name: np.mean(metric_arrays[name]) for name in metric_name}
     std_metrics = {name: np.std(metric_arrays[name]) for name in metric_name}
 
     # Printing results
     print(f'{args.model_type}: {args.seed_num} Trials')
+    hpo_time = getattr(args, "hpo_time", None) if getattr(args, "tune", False) else 0.0
+    if hpo_time is not None:
+        print(f"HPO_Time = {hpo_time:.8f} s")
     for name in metric_name:
         if info['task_type'] == 'regression' and name != 'Time':
             formatted_results = ', '.join(['{:.8e}'.format(e) for e in metric_arrays[name]])
@@ -558,6 +609,9 @@ def show_results(args, info, metric_name, loss_list, results_list, time_list):
 
     # Printing results
     print(f'{args.model_type}: {args.seed_num} Trials')
+    hpo_time = getattr(args, "hpo_time", None) if getattr(args, "tune", False) else 0.0
+    if hpo_time is not None:
+        print(f"HPO_Time = {hpo_time:.8f} s")
     for name in metric_name:
         if info['task_type'] == 'regression' and not name.endswith('Time'):
             formatted_results = ', '.join(['{:.8e}'.format(e) for e in metric_arrays[name]])
@@ -585,7 +639,8 @@ def show_results(args, info, metric_name, loss_list, results_list, time_list):
     print('-' * 50)
 
 
-def tune_hyper_parameters(args, opt_space, train_val_data, info):
+def tune_hyper_parameters(args, opt_space, train_val_data, info, *, score_candidate=None,
+                          persist=False, recovery=None):
     """
     Tune hyper-parameters.
 
@@ -598,48 +653,46 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info):
     import optuna
     import optuna.samplers
     import optuna.trial
+    from TALENT.benchmark.scoring import Scorer
+    from TALENT.benchmark.study import run_trials, validate_hpo_budget
+    timeout = validate_hpo_budget(args)
+    args.hpo_time = 0.0
     from TALENT.model.lib.tuning_metric import (
         validate_tune_metric, assert_tune_metric_supported, resolve_tune_metric,
     )
     # Validate here as well so the CLI path fails fast on a typo (the Python
     # API already validates before calling this function).
-    validate_tune_metric(resolve_tune_metric(args))
-    assert_tune_metric_supported(args.model_type, args)
+    tune_metric = validate_tune_metric(resolve_tune_metric(args), is_regression=info['task_type'] == 'regression')
+    if score_candidate is None and not isinstance(tune_metric, Scorer):
+        assert_tune_metric_supported(args.model_type, args)
     # The tuned config depends on the objective, so a metric-specific search
     # gets its own cache file; tune_metric=None keeps the historical filename.
-    tune_metric = resolve_tune_metric(args)
-    tuned_config_path = osp.join(
+    tuned_config_path = None if isinstance(tune_metric, Scorer) else osp.join(
         args.save_path,
         '{}-tuned.json'.format(args.model_type) if tune_metric is None
         else '{}-tuned-{}.json'.format(args.model_type, tune_metric),
     )
 
-    def objective(trial):
+    search_space = deepcopy(opt_space[args.model_type])
+    encoding_section = "training" if "training" in search_space else "fit"
+    search_space.setdefault(encoding_section, {}).setdefault("n_bins", ["int", 2, 256])
+
+    def sample_config(trial):
         config = {}
-        try:
-            opt_space[args.model_type]['training']['n_bins'] = [
-                "int",
-                2,
-                256
-            ]
-        except KeyError:
-            opt_space[args.model_type]['fit']['n_bins'] = [
-                "int",
-                2,
-                256
-            ]
-        merge_sampled_parameters(
-            config, sample_parameters(trial, opt_space[args.model_type], config)
-        )
-        if args.model_type == 'xgboost' and torch.cuda.is_available():
+        merge_sampled_parameters(config, sample_parameters(trial, search_space, config))
+        requested = getattr(args, 'device', None)
+        if requested is None and getattr(args, 'gpu', None) in ('cpu', ''):
+            requested = 'cpu'
+        device = get_device(requested)
+        if args.model_type == 'xgboost' and device.type == 'cuda':
             # XGBoost >= 2.0 GPU API: tree_method='hist' + device='cuda'.
             # The legacy 'gpu_hist' / 'gpu_id' form was deprecated in 2.0 and
             # removed in 3.0, so we use the modern form to stay compatible
             # across the supported XGBoost range.
             config['model']['tree_method'] = 'hist'
-            config['model']['device'] = 'cuda'
+            config['model']['device'] = str(device)
             config['fit']["verbose"] = False
-        elif args.model_type == 'catboost' and torch.cuda.is_available():
+        elif args.model_type == 'catboost' and device.type == 'cuda':
             config['fit']["logging_level"] = "Silent"
 
         elif args.model_type == 'RandomForest':
@@ -686,8 +739,8 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info):
 
         if args.model_type in ['ptarl']:
             config['model']['n_clusters'] = 20
-            config['model']["regularize"] = "True"
-            config['general']["diversity"] = "True"
+            config['model']["regularize"] = True
+            config['general']["diversity"] = True
             config['general']["ot_weight"] = 0.25
             config['general']["diversity_weight"] = 0.25
             config['general']["r_weight"] = 0.25
@@ -750,18 +803,19 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info):
                 # same range as for non-glu activations
                 config['model']['d_ffn_factor'] *= 2 / 3
 
-        trial_configs.append(config)
-        # method.fit(train_val_data, info, train=True, config=config)  
-        # run with this config
-        try:
-            method.fit(train_val_data, info, train=True, config=config)
-            return method.trlog['best_res']
-        except Exception as e:
-            print(e)
-            from TALENT.model.lib.tuning_metric import worst_objective_value
-            return worst_objective_value(args, info['task_type'] == 'regression')
+        return config
 
-    if osp.exists(tuned_config_path) and args.retune == False:
+    def objective(trial):
+        config = sample_config(trial)
+        trial.set_user_attr("config", config)
+        method.fit(train_val_data, info, train=True, config=config)
+        score = float(method.trlog['best_res'])
+        if not np.isfinite(score):
+            raise ValueError("non-finite validation objective")
+        return score
+
+    benchmark_search = persist or score_candidate is not None or isinstance(tune_metric, Scorer)
+    if not benchmark_search and osp.exists(tuned_config_path) and args.retune == False:
         with open(tuned_config_path, 'rb') as fp:
             args.config = json.load(fp)
     else:
@@ -772,29 +826,33 @@ def tune_hyper_parameters(args, opt_space, train_val_data, info):
         is_reg = info['task_type'] == 'regression'
         direction = study_direction(args, is_reg)
         if is_reg:
-            for key in opt_space[args.model_type]['model'].keys():
-                if 'dropout' in key and '?' not in opt_space[args.model_type]['model'][key][0]:
-                    opt_space[args.model_type]['model'][key][0] = '?' + opt_space[args.model_type]['model'][key][0]
-                    opt_space[args.model_type]['model'][key].insert(1, 0.0)
+            for key in search_space['model'].keys():
+                if 'dropout' in key and '?' not in search_space['model'][key][0]:
+                    search_space['model'][key][0] = '?' + search_space['model'][key][0]
+                    search_space['model'][key].insert(1, 0.0)
+
+        if benchmark_search:
+            from TALENT.benchmark.study import optimize_candidates
+            args.config = optimize_candidates(args, info, train_val_data, direction,
+                                              sample_config, score_candidate, persist, recovery)
+            return args
 
         method = get_method(args.model_type)(args, info['task_type'] == 'regression')
 
-        trial_configs = []
         study = optuna.create_study(
             direction=direction,
             sampler=optuna.samplers.TPESampler(seed=0),
         )
-        study.optimize(
-            objective,
-            **{'n_trials': args.n_trials},
+        run_trials(
+            study, objective, args,
+            n_trials=args.n_trials, timeout=timeout, catch=(Exception,),
             show_progress_bar=True,
         )
-        # get best configs
-        best_trial_id = study.best_trial.number
-        # update config files        
+        if not study.get_trials(deepcopy=False, states=(optuna.trial.TrialState.COMPLETE,)):
+            raise RuntimeError(f"No Optuna trial completed successfully for {args.model_type}")
         print('Best Hyper-Parameters')
-        print(trial_configs[best_trial_id])
-        args.config = trial_configs[best_trial_id]
+        args.config = study.best_trial.user_attrs["config"]
+        print(args.config)
         with open(tuned_config_path, 'w') as fp:
             json.dump(args.config, fp, sort_keys=True, indent=4)
     return args

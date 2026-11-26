@@ -70,14 +70,14 @@ Random Seed and Device Management
    Sets seeds for Python random, NumPy, PyTorch CPU, and PyTorch CUDA generators.
    Each generator gets a different seed derived from the base_seed.
 
-.. function:: get_device()
+.. function:: get_device(device=None)
    :noindex:
 
-   Get the appropriate device (GPU or CPU) for PyTorch operations.
+   Use an explicit PyTorch device such as ``"cpu"`` or ``"cuda:1"``, or omit it for automatic selection.
    
    **Returns:**
    
-   * **torch.device** -- CUDA device if available, otherwise CPU device
+   * **torch.device** -- The requested device, or the first CUDA device when available and CPU otherwise
 
 Evaluation Metrics
 ------------------
@@ -178,11 +178,8 @@ Argument Parsing
      * default_para: Default parameter configurations
      * opt_space: Hyperparameter optimization space
    
-   **Supported Models:**
-   
-   * LogReg, NCM, RandomForest, xgboost, catboost, lightgbm
-   * svm, knn, NaiveBayes, dummy, LinearRegression
-   
+   Use ``TALENT.model.method_registry.classical_method_names()`` for the accepted model IDs.
+
    **Key Parameters:**
    
    * normalization: Data normalization method
@@ -203,14 +200,7 @@ Argument Parsing
      * default_para: Default parameter configurations
      * opt_space: Hyperparameter optimization space
    
-   **Supported Models:**
-   
-   * mlp, resnet, ftt, node, autoint, tabpfn, tangos, saint
-   * tabcaps, tabnet, snn, ptarl, danets, dcn2, tabtransformer
-   * dnnr, switchtab, grownet, tabr, modernNCA, hyperfast
-   * bishop, realmlp, protogate, mlp_plr, excelformer, grande
-   * amformer, tabptm, trompt, tabm, PFN-v2, t2gformer
-   * tabautopnpnet, tabicl
+   Use ``TALENT.model.method_registry.deep_method_names()`` for the accepted model IDs.
 
 Results Display
 ---------------
@@ -226,7 +216,7 @@ Results Display
    * **info** (*dict*) -- Dataset information
    * **metric_name** (*list*) -- Names of evaluation metrics
    * **results_list** (*list*) -- List of results from multiple trials
-   * **time_list** (*list*) -- List of training times
+   * **time_list** (*list*) -- Per-seed fit and test prediction times
    
    **Output:**
    
@@ -244,7 +234,7 @@ Results Display
    * **metric_name** (*list*) -- Names of evaluation metrics
    * **loss_list** (*list*) -- List of training losses
    * **results_list** (*list*) -- List of results from multiple trials
-   * **time_list** (*list*) -- List of training times
+   * **time_list** (*list*) -- Per-seed fit and test prediction times
    
    **Output:**
    
@@ -272,7 +262,7 @@ Hyperparameter Tuning
    **Features:**
    
    * Uses TPE sampler for efficient optimization
-   * Supports both regression (minimize) and classification (maximize) objectives
+   * Maximizes or minimizes the configured validation metric according to its direction
    * Automatically saves best configuration to JSON file
    * Handles model-specific parameter adjustments
 

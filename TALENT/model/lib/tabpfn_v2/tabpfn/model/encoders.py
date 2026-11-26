@@ -7,6 +7,7 @@ from typing import Any
 import numpy as np
 import torch
 from torch import nn
+from TALENT.model.lib.tabpfn.utils import to_ranking_low_mem
 
 
 # TODO(eddiebergman): These were used before but I have no idea why.

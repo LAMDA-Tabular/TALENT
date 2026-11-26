@@ -5,10 +5,10 @@ Deep learning method implementations that wrap model architectures with training
 
 This section contains method classes that provide a unified interface for training, validation, and prediction across all deep learning models in TALENT. Each method class inherits from the base `Method` class and implements model-specific logic while maintaining consistent APIs.
 
-Base Method Class (method/base.py)
+Base Method Class (methods/base.py)
 ===================================
 
-All method implementations inherit from the base `Method` class which provides the core training, validation, and prediction workflow. Understanding this base class is essential for using any method in TALENT.
+Deep method adapters use the base `Method` class which provides the core training, validation, and prediction workflow. Understanding this base class is essential for using any method in TALENT.
 
 .. class:: Method
    :noindex:
@@ -117,7 +117,7 @@ Core Base Methods
    3. **Model Construction:** Call `construct_model()` to build the neural network
    4. **Optimizer Setup:** Initialize AdamW optimizer with configured learning rate and weight decay
    5. **Training Loop:** For each epoch, call `train_epoch()` and `validate()`
-   6. **Early Stopping:** Stop training if validation performance doesn't improve for 20 epochs
+   6. **Early Stopping:** Stop training if validation performance fails to improve for more than 20 consecutive epochs
    7. **Checkpoint Saving:** Save best and final model weights
 
 .. method:: train_epoch(epoch)
@@ -153,7 +153,7 @@ Core Base Methods
    2. **Inference Loop:** Process validation batches without gradients
    3. **Metric Computation:** Calculate validation metrics using `metric()` method
    4. **Best Model Tracking:** Save model checkpoint if validation performance improved
-   5. **Early Stopping Logic:** Increment counter if no improvement; stop after 20 epochs
+   5. **Early Stopping Logic:** Increment counter if no improvement; stop after more than 20 consecutive epochs without improvement
    6. **Logging:** Record validation results and save training log
 
 .. method:: predict(data, info, model_name)
@@ -178,7 +178,7 @@ Core Base Methods
    3. **Inference:** Generate predictions in evaluation mode
    4. **Metric Calculation:** Compute comprehensive evaluation metrics
 
-.. method:: metric(predictions, labels, y_info)
+.. method:: metric(predictions, labels, y_info, threshold=None)
    :noindex:
    
    Compute comprehensive evaluation metrics based on task type.
@@ -226,29 +226,8 @@ Core Base Methods
 Utility Functions
 -----------------
 
-.. function:: check_softmax(logits)
+.. autofunction:: TALENT.model.utils.check_softmax
    :noindex:
-
-   Ensure logits are properly normalized probabilities for classification tasks.
-   
-   **Parameters:**
-   
-   * **logits** (*np.ndarray*) -- Array of shape (N, C) with raw logits or probabilities
-   
-   **Returns:**
-   
-   * **np.ndarray** -- Properly normalized probabilities summing to 1
-   
-   **Mathematical Process:**
-   
-   1. **Probability Check:** Verify if values are in [0,1] and sum to 1 per sample
-   2. **Softmax Application:** If not probabilities, apply numerically stable softmax:
-      
-      .. math::
-         
-         p_i = \frac{\exp(x_i - \max(x))}{\sum_{j} \exp(x_j - \max(x))}
-   
-   3. **Numerical Stability:** Subtract max before exp to prevent overflow
 
 Method Implementations
 ======================
@@ -307,7 +286,7 @@ These methods only override `construct_model()` and use all base class functiona
    
    **Usage:** For ensemble-based approaches with neural components
 
-.. class:: GrandeMethod
+.. class:: GRANDEMethod
    :noindex:
 
    Gradient-boosted neural decision ensembles for tree-mimic behavior.

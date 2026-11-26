@@ -1,7 +1,7 @@
 from TALENT.model.methods.tabpfn_v2 import TabPFNMethod
 from TALENT.model.method_registry import resolve_bundled_path, download_from_hf_hub
 
-# Real-TabPFN: TabPFN v2 classifier with continued pre-training on real data.
+# Preserve the historical Real-TabPFN checkpoint filename.
 REAL_TABPFN_REPO = "Prior-Labs/TabPFN-v2-clf"
 REAL_TABPFN_CHECKPOINT = "tabpfn-v2-classifier-finetuned-zk73skhh.ckpt"
 

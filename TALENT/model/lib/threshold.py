@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import Tuple, Union
 
+from TALENT.benchmark.scoring import Scorer
+
 import numpy as np
 
 
@@ -32,7 +34,7 @@ def _positive_class_proba(y_proba: np.ndarray) -> np.ndarray:
 def tune_threshold(
     y_true: np.ndarray,
     y_proba: np.ndarray,
-    metric: str = "f1",
+    metric: Union[str, Scorer] = "f1",
     n_thresholds: int = 101,
 ) -> Tuple[float, float]:
     """Find the decision threshold that maximises ``metric`` on ``(y_true, y_proba)``.
@@ -77,11 +79,18 @@ def tune_threshold(
         "recall": lambda y_t, y_p: recall_score(y_t, y_p, zero_division=0),
         "balanced_accuracy": balanced_accuracy_score,
     }
-    if metric not in metric_fns:
+    maximize = True
+    if isinstance(metric, Scorer):
+        if metric.response != "labels":
+            raise ValueError("A threshold scorer requires response='labels'")
+        metric_fn = metric
+        maximize = metric.greater_is_better
+    elif metric in metric_fns:
+        metric_fn = metric_fns[metric]
+    else:
         raise ValueError(
             f"Unknown metric {metric!r}. Choose one of {sorted(metric_fns)}."
         )
-    metric_fn = metric_fns[metric]
 
     # Dense grid in the middle, fine-grained tails for highly imbalanced data.
     thresholds = np.unique(
@@ -94,12 +103,12 @@ def tune_threshold(
         )
     )
 
-    best_score = -np.inf
+    best_score = -np.inf if maximize else np.inf
     best_t = 0.5
     for t in thresholds:
         y_pred = (pos_proba >= t).astype(int)
         score = float(metric_fn(y_true, y_pred))
-        if score > best_score:
+        if (maximize and score > best_score) or (not maximize and score < best_score):
             best_score = score
             best_t = float(t)
 

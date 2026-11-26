@@ -19,8 +19,10 @@ Supported metric names (must match the names returned by ``Method.metric``):
 
 from __future__ import annotations
 
+from typing import Optional, Sequence, Tuple, Union
 import math
-from typing import Optional, Sequence, Tuple
+
+from TALENT.benchmark.scoring import Scorer
 
 # Whether a larger value of each metric means a better model. This is the
 # single source of truth for the optimization direction during HPO.
@@ -51,7 +53,7 @@ def metric_higher_is_better(name: str) -> bool:
     return _HIGHER_IS_BETTER[name]
 
 
-def validate_tune_metric(name: Optional[str]) -> Optional[str]:
+def validate_tune_metric(name: Optional[Union[str, Scorer]], *, is_regression: Optional[bool] = None) -> Optional[Union[str, Scorer]]:
     """Validate a requested ``tune_metric``; return it unchanged (or ``None``).
 
     Raises ``ValueError`` for an unknown metric name so misconfiguration fails
@@ -59,15 +61,22 @@ def validate_tune_metric(name: Optional[str]) -> Optional[str]:
     """
     if name is None:
         return None
+    if isinstance(name, Scorer):
+        if is_regression is not None and (name.response == "prediction") != is_regression:
+            raise ValueError(f"Scorer {name.name!r} has an incompatible response for this task")
+        return name
     if name not in _HIGHER_IS_BETTER:
         raise ValueError(
             f"Unknown tune_metric {name!r}. Supported metrics: "
             f"{', '.join(supported_tune_metrics())}."
         )
+    if is_regression is not None and (name in {"MAE", "RMSE", "R2"}) != is_regression:
+        task = "regression" if is_regression else "classification"
+        raise ValueError(f"HPO metric {name} is unavailable for {task}")
     return name
 
 
-def resolve_tune_metric(args) -> Optional[str]:
+def resolve_tune_metric(args) -> Optional[Union[str, Scorer]]:
     """Read ``args.tune_metric`` defensively (``None`` if unset)."""
     return getattr(args, "tune_metric", None)
 
@@ -86,24 +95,18 @@ def select_objective(
     :param is_regression: whether the task is regression.
     :return: ``(score, higher_is_better)``.
 
-    Falls back to the historical behaviour --- the first metric in ``vres``,
-    with ``higher_is_better == (not is_regression)`` --- when no ``tune_metric``
-    is configured, when the requested metric is not available for this task
-    (e.g. ``AUC`` on a regression task), or when the value is NaN (e.g. ``AUC``
-    on a degenerate single-class validation fold).
+    The first metric supplies the historical default. An explicitly selected
+    metric must be available and finite on the validation data.
     """
-    legacy = (float(vres[0]), (not is_regression))
-    key = resolve_tune_metric(args)
-    if not key or key not in metric_names:
-        return legacy
-    val = vres[list(metric_names).index(key)]
-    try:
-        val = float(val)
-    except (TypeError, ValueError):
-        return legacy
-    if math.isnan(val):
-        return legacy
-    return val, _HIGHER_IS_BETTER.get(key, not is_regression)
+    key = validate_tune_metric(resolve_tune_metric(args), is_regression=is_regression)
+    if key is None:
+        return float(vres[0]), not is_regression
+    if key not in metric_names:
+        raise ValueError(f"The method did not report the requested HPO metric {key}")
+    score = float(vres[metric_names.index(key)])
+    if not math.isfinite(score):
+        raise ValueError(f"HPO metric {key} is undefined on this validation split")
+    return score, _HIGHER_IS_BETTER[key]
 
 
 def study_direction(args, is_regression: bool) -> str:
@@ -112,24 +115,23 @@ def study_direction(args, is_regression: bool) -> str:
     Mirrors :func:`select_objective`: defaults to ``'minimize'`` for regression
     and ``'maximize'`` for classification when no ``tune_metric`` is set.
     """
-    key = resolve_tune_metric(args)
-    if not key or key not in _HIGHER_IS_BETTER:
+    key = validate_tune_metric(resolve_tune_metric(args), is_regression=is_regression)
+    if key is None:
         return "minimize" if is_regression else "maximize"
-    return "maximize" if _HIGHER_IS_BETTER[key] else "minimize"
+    higher = key.greater_is_better if isinstance(key, Scorer) else _HIGHER_IS_BETTER[key]
+    return "maximize" if higher else "minimize"
 
 
 def worst_objective_value(args, is_regression: bool) -> float:
     """A sentinel "worst" score for the configured direction.
 
-    Used as the objective's return value when a trial raises, so a failed
-    trial is never selected as best regardless of optimization direction.
+    Retained for callers using numeric failure scores. TALENT's Optuna
+    studies record unsuccessful trials with the failed state.
     """
     return -1e18 if study_direction(args, is_regression) == "maximize" else 1e18
 
 
-# Methods whose HPO objective is an internal training loss rather than a value
-# returned by ``Method.metric`` (so a user-selected ``tune_metric`` cannot be
-# applied to them). Tuning these still works with ``tune_metric=None``.
+# These adapters use a fixed validation metric for single-validation HPO.
 METHODS_WITHOUT_TUNE_METRIC = frozenset({"tabnet", "ptarl", "tabcaps"})
 
 
@@ -137,8 +139,7 @@ def assert_tune_metric_supported(model_type: str, args) -> None:
     """Raise if a ``tune_metric`` is set for a method that cannot honour it."""
     if resolve_tune_metric(args) is not None and model_type in METHODS_WITHOUT_TUNE_METRIC:
         raise NotImplementedError(
-            f"tune_metric is not supported for method {model_type!r}, which tunes "
-            f"on its internal training loss rather than a Method.metric output. "
-            f"Use tune_metric=None for this method, or exclude it from "
-            f"metric-specific HPO."
+            f"tune_metric is not supported for single-validation HPO with {model_type!r}. "
+            "Use tune_metric=None for the adapter's validation metric, or select "
+            "a scoring metric with cross_validate(..., tune=True, hpo_cv=...)."
         )

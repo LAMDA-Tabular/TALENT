@@ -1,141 +1,56 @@
-====================================
-How to Use TALENT
-====================================
+Using TALENT
+============
 
-This guide will walk you through how to install, set up and use the TALENT toolbox for benchmarking models on tabular data, running experiments, and adding new methods.
-
-==========================
-
-Installation
-==========================
-
-You can install TALENT directly from GitHub:
+Install from a source checkout to run the bundled examples.
 
 .. code-block:: bash
 
-     pip install git+https://github.com/LAMDA-Tabular/TALENT.git@main --upgrade
+   git clone https://github.com/LAMDA-Tabular/TALENT.git
+   cd TALENT
+   python -m pip install -e .
 
-Alternatively, for development purposes you can clone the repository:
+Python API
+----------
 
-.. code-block:: bash
-
-     git clone https://github.com/LAMDA-Tabular/TALENT
-     cd TALENT/test
-
-==========================
-2. Quick Start
-==========================
-
-Here's a basic example of how to run a deep learning model experiment:
+From the checkout root, run logistic regression on the bundled bank dataset:
 
 .. code-block:: python
 
-     from tqdm import tqdm
-     from TALENT.model.utils import get_deep_args, show_results, tune_hyper_parameters, get_method, set_seeds
-     from TALENT.model.lib.data import get_dataset
-     from TALENT.model.lib.evaluation import evaluate
-     from TALENT.model.method_registry import get_method_spec
+   import TALENT
 
-     if __name__ == '__main__':
-         loss_list, results_list, time_list = [], [], []
-         args, default_para, opt_space = get_deep_args()
-         train_val_data, test_data, info = get_dataset(args.dataset, args.dataset_path)
-         if args.tune:
-             args = tune_hyper_parameters(args, opt_space, train_val_data, info)
+   result = TALENT.run_from_dataset("LogReg", "bank", "./example_datasets")
+   print(dict(zip(result.metric_names, result.metrics)))
+   print(result.predict_proba.shape)
 
-         spec = get_method_spec(args.model_type)
-         for seed in tqdm(range(args.seed_num)):
-             args.seed = seed    # update seed
-             set_seeds(args.seed)
-             method = get_method(args.model_type)(args, info['task_type'] == 'regression')
-             method.fit(train_val_data, info)
-             # evaluate() standardizes predict_proba and (for binary tasks) tunes
-             # the decision threshold on the validation split.
-             eval_result = evaluate(
-                 method, train_val_data, test_data, info,
-                 model_name=args.evaluate_option,
-                 output_type=spec.output_type,
-                 tune_threshold=True,
-             )
-             loss_list.append(eval_result["loss"])
-             results_list.append(eval_result["metrics"])
-             metric_name = eval_result["metric_names"]
-             time_list.append((method.fit_time, method.predict_time))
+For data already in memory, pass the training and validation splits, test
+split and dataset metadata to ``TALENT.run(method, train_val, test, info)``.
+Both entry points return a ``RunResult``. For classifiers with probabilistic
+outputs, ``predict_proba`` has one column per class. Binary threshold tuning
+uses the validation split. Regressors return predictions in target units.
 
-         show_results(args, info, metric_name, loss_list, results_list, time_list)
+Use ``TALENT.get_method_spec(name)`` to check supported tasks, preprocessing,
+hyperparameter tuning and weights. Calling ``spec.preflight()`` reads local
+package metadata. See :doc:`dependencies` for optional backends and
+:doc:`methods` for model descriptions.
 
+Command-line experiments
+------------------------
 
-Run the script from command line:
+From the same checkout root:
 
 .. code-block:: bash
 
-     python train_model_deep.py --model_type MODEL_NAME
+   python test/train_model_classical.py --model_type LogReg --dataset bank --dataset_path example_datasets --seed_num 1
+   python test/train_model_deep.py --model_type mlp --dataset bank --dataset_path example_datasets --seed_num 1 --max_epoch 1
 
-==========================
-3. Running Experiments
-==========================
+The launchers print metrics and write run artifacts below ``--model_path``.
+Pass ``--help`` to the relevant launcher for its options.
 
-TALENT supports running experiments for both deep learning methods and classical machine learning models:
+Adding a method
+---------------
 
-Configure the experiment settings:
-
-Edit the configuration files located in configs/default/[MODEL_NAME].json and configs/opt_space/[MODEL_NAME].json
-
-Run the experiment:
-
-For deep learning methods:
-
-.. code-block:: bash
-
-     python train_model_deep.py --model_type [MODEL_NAME]
-
-For classical machine learning methods:
-
-.. code-block:: bash
-
-     python train_model_classical.py --model_type [MODEL_NAME]
-
-==========================
-4. Adding New Methods
-==========================
-
-For methods that only need model design:
-
-Add the model class to model/models/
-
-Inherit from model/methods/base.py and override construct_model()
-
-Register the method in the unified registry model/method_registry.py by appending a MethodSpec entry (the CLI choices and get_method() are derived from it)
-
-Add parameter settings in configs/default/[MODEL_NAME].json and configs/opt_space/[MODEL_NAME].json
-
-For methods requiring training process changes, partially override functions based on model/methods/base.py. Refer to existing implementations in model/methods/.
-
-===============================
-5. Configuring Hyperparameters
-===============================
-
-Hyperparameters can be configured through:
-
-configs/default/: Default parameters for each method
-
-configs/opt_space/: Hyperparameter optimization space
-
-Modify the appropriate .json files to adjust parameters like learning rate, batch size, etc.
-
-==========================
-6. Troubleshooting
-==========================
-
-If you encounter any issues while using TALENT, try the following steps:
-
-1. **Check the logs**: Review the logs in the `logs/` directory for any error messages.
-2. **Verify dependencies**: Ensure that all required dependencies are installed. Refer to the `dependencies.rst` for more information.
-3. **Configuration issues**: Double-check your configuration files to ensure the paths, dataset names, and hyperparameters are correct.
-4. **Contact**: If you're unable to resolve the issue, feel free to open an issue on GitHub or contact the developers.
-
-==========================
-Conclusion
-==========================
-
-TALENT provides a flexible and powerful platform for experimenting with both classical and deep learning models on tabular data. By following the steps in this guide, you can quickly set up and run experiments, fine-tune models, and even add your own methods to the toolbox. For any further assistance, refer to the documentation or reach out to the development team.
+Implement the adapter under ``TALENT/model/methods/`` or
+``TALENT/model/classical_methods/`` and register it in
+``TALENT/model/method_registry.py``. Add matching JSON files under
+``TALENT/configs/default/`` and ``TALENT/configs/opt_space/``. The Python
+runner and both CLI launchers use the registry for method selection.

@@ -9,7 +9,7 @@ The library components module provides specialized implementations and utilities
 
 
 Common Features
---------------
+---------------
 
 All library components in TALENT share the following features:
 
@@ -21,7 +21,7 @@ All library components in TALENT share the following features:
 - GPU acceleration support
 
 Available Components
-------------------
+--------------------
 
 **Core Utilities:**
 
@@ -38,14 +38,14 @@ Available Components
 - :doc:`RealMLP <lib/realmlp>`: Real-valued MLP for tabular data
 - :doc:`BiSHop <lib/bishop>`: Bidirectional hierarchical attention
 - :doc:`NODE <lib/node>`: Neural oblivious decision ensembles
-- :doc:`HyperFast <lib/hyperfast>`: Fast hyperparameter optimization
+- :doc:`HyperFast <lib/hyperfast>`: Meta-trained hypernetwork for tabular classification
 - :doc:`ExcelFormer <lib/excelformer>`: Transformer for tabular data
 - :doc:`DANets <lib/danets>`: Deep attention networks
 - :doc:`TabCaps <lib/tabcaps>`: Capsule networks for tabular data
 - :doc:`TabICL <lib/tabicl>`: In-context learning for tabular data
 - :doc:`Periodic Tabular DL <lib/periodic_tab_dl>`: Periodic embeddings for tabular data
 - :doc:`TROMPT <lib/trompt>`: Tabular prompting mechanisms
-- :doc:`PTARL <lib/ptarl>`: Policy gradient methods for tabular RL
+- :doc:`PTARL <lib/ptarl>`: Prototype-based representation learning for tabular prediction
 - :doc:`TRC <lib/trc>`: Post-hoc representation re-estimation and light-space mapping
 - :doc:`AmFormer <lib/amformer>`: Attention mechanisms for transformers
 - :doc:`TabPTM <lib/tabptm>`: Pre-trained models for tabular data
@@ -60,6 +60,7 @@ Available Components
    lib/num_embeddings
    lib/tabnet
    lib/tabpfn
+   lib/pfn_v2
    lib/tabr
    lib/tabm
    lib/realmlp

@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import warnings
 from pathlib import Path
-from packaging import version
 from typing import Optional, List, Dict
 
 import numpy as np
 import torch
 
-import sklearn
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.utils.multiclass import check_classification_targets
-from sklearn.utils.validation import check_is_fitted
 from sklearn.preprocessing import LabelEncoder
+from sklearn.utils.validation import check_is_fitted
+
+from TALENT.model.lib.sklearn_compat import validate_data
 
 from .preprocessing import TransformToNumerical, EnsembleGenerator
 from .model.tabicl import InferenceConfig
@@ -20,7 +20,6 @@ from .model.tabicl import TabICL
 
 
 warnings.filterwarnings("ignore", category=FutureWarning, module="sklearn")
-OLD_SKLEARN = version.parse(sklearn.__version__) < version.parse("1.6")
 
 
 class TabICLClassifier(ClassifierMixin, BaseEstimator):
@@ -358,11 +357,7 @@ class TabICLClassifier(ClassifierMixin, BaseEstimator):
             and hierarchical classification is disabled.
         """
 
-        if OLD_SKLEARN:
-            # Workaround for compatibility with scikit-learn prior to v1.6
-            X, y = self._validate_data(X, y, dtype=None, cast_to_ndarray=False)
-        else:
-            X, y = self._validate_data(X, y, dtype=None, skip_check_array=True)
+        X, y = validate_data(self, X, y, dtype=None, skip_check_array=True)
 
         check_classification_targets(y)
 
@@ -515,32 +510,27 @@ class TabICLClassifier(ClassifierMixin, BaseEstimator):
             # Reject 1D arrays to maintain sklearn compatibility
             raise ValueError(f"The provided input X is one-dimensional. Reshape your data.")
 
-        if self.n_jobs is not None:
-            assert self.n_jobs != 0
-            old_n_threads = torch.get_num_threads()
+        if self.n_jobs is None:
+            return self._predict_probabilities(X)
 
-            import multiprocessing as mp
+        import multiprocessing as mp
 
-            n_logical_cores = mp.cpu_count()
+        if self.n_jobs == 0:
+            raise ValueError("n_jobs must be nonzero or None")
+        cores = mp.cpu_count()
+        if self.n_jobs > cores:
+            warnings.warn(f"TabICL got n_jobs={self.n_jobs}; using the {cores} available logical cores.")
+        n_threads = min(cores, self.n_jobs) if self.n_jobs > 0 else max(1, cores + 1 + self.n_jobs)
+        old_n_threads = torch.get_num_threads()
+        torch.set_num_threads(n_threads)
+        try:
+            return self._predict_probabilities(X)
+        finally:
+            torch.set_num_threads(old_n_threads)
 
-            if self.n_jobs > 0:
-                if self.n_jobs > n_logical_cores:
-                    warnings.warn(
-                        f"TabICL got n_jobs={self.n_jobs} but there are only {n_logical_cores} logical cores available."
-                        f" Only {n_logical_cores} threads will be used."
-                    )
-                n_threads = max(n_logical_cores, self.n_jobs)
-            else:
-                n_threads = max(1, mp.cpu_count() + 1 + self.n_jobs)
-
-            torch.set_num_threads(n_threads)
-
+    def _predict_probabilities(self, X):
         # Preserve DataFrame structure to retain column names and types for correct feature transformation
-        if OLD_SKLEARN:
-            # Workaround for compatibility with scikit-learn prior to v1.6
-            X = self._validate_data(X, reset=False, dtype=None, cast_to_ndarray=False)
-        else:
-            X = self._validate_data(X, reset=False, dtype=None, skip_check_array=True)
+        X = validate_data(self, X, reset=False, dtype=None, skip_check_array=True)
 
         X = self.X_encoder_.transform(X)
 
@@ -578,9 +568,6 @@ class TabICLClassifier(ClassifierMixin, BaseEstimator):
         # Convert logits to probabilities if required
         if self.average_logits:
             avg = self.softmax(avg, axis=-1, temperature=self.softmax_temperature)
-
-        if self.n_jobs is not None:
-            torch.set_num_threads(old_n_threads)
 
         # Normalize probabilities to sum to 1
         return avg / avg.sum(axis=1, keepdims=True)

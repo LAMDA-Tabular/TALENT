@@ -195,21 +195,8 @@ Prepares PyTorch DataLoaders for training/validation or test data, with proper t
 
 **Returns:**
 
-* If `is_train=True`:
-  - Tuple containing:
-    - Processed numerical data (on device).
-    - Processed categorical data (on device).
-    - Processed labels (on device).
-    - Training DataLoader.
-    - Validation DataLoader.
-    - Loss function (MSE for regression, cross-entropy for classification).
-* If `is_train=False`:
-  - Tuple containing:
-    - Processed numerical data (on device).
-    - Processed categorical data (on device).
-    - Processed labels (on device).
-    - Test DataLoader.
-    - Loss function.
+Training returns ``(X_num, X_cat, Y, train_loader, val_loader, loss_fn)``.
+Evaluation returns ``(X_num, X_cat, Y, test_loader, loss_fn)``.
 
 
 .. code-block:: python

@@ -12,6 +12,7 @@ from TALENT.model.lib.data import (
     data_norm_process,
     data_label_process
 )
+from TALENT.model.utils import probability_nll
 import time
 
 class TabCapsMethod(Method):
@@ -26,6 +27,7 @@ class TabCapsMethod(Method):
         if model_config is None:
             model_config = self.args.config['model']
         self.model = TabCapsClassifier(
+            device_name=str(self.args.device),
             optimizer_fn=QHAdam,
             optimizer_params=dict(lr=model_config['lr'], weight_decay=model_config['weight_decay'], nus=(0.7, 0.99), betas=(0.95, 0.998)),
             scheduler_params=dict(gamma=0.95, step_size=20),
@@ -44,7 +46,7 @@ class TabCapsMethod(Method):
             self.N, self.C, self.num_new_value, self.imputer, self.cat_new_value = data_nan_process(self.N, self.C, self.args.num_nan_policy, self.args.cat_nan_policy)
             self.y, self.y_info, self.label_encoder = data_label_process(self.y, self.is_regression)
             self.N,self.num_encoder = num_enc_process(self.N,num_policy = self.args.num_policy, n_bins = self.args.config['training']['n_bins'],y_train=self.y['train'],is_regression=self.is_regression)
-            self.N, self.C, self.ord_encoder, self.mode_values, self.cat_encoder = data_enc_process(self.N, self.C, self.args.cat_policy)
+            self.N, self.C, self.ord_encoder, self.mode_values, self.cat_encoder = data_enc_process(self.N, self.C, self.args.cat_policy, self.y['train'])
             self.N, self.normalizer = data_norm_process(self.N, self.args.normalization, self.args.seed)
             if self.is_regression:
                 self.d_out = 1
@@ -107,7 +109,7 @@ class TabCapsMethod(Method):
         test_label, test_logit, _ = self.model.predict(self.N_test, self.y_test)
         self.predict_time = time.time() - tic
         
-        vl = self.criterion(torch.tensor(test_logit), torch.tensor(test_label)).item()     
+        vl = probability_nll(test_logit, test_label)
         vres, metric_name = self.metric(test_logit, test_label, self.y_info)
         print('Test: loss={:.4f}'.format(vl))
         for name, res in zip(metric_name, vres):

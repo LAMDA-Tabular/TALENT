@@ -21,6 +21,7 @@ from TALENT.model.lib.data import (
     data_label_process,
     data_nan_process,
 )
+from TALENT.model.lib.query_batches import predict_in_batches, query_batch_size
 from TALENT.model.method_registry import weights_download_hint
 from TALENT.model.methods.base import Method
 from TALENT.model.utils import probability_nll
@@ -83,25 +84,6 @@ class TabFMMethod(Method):
             else:
                 df[col] = df[col].astype("category")
         return df
-
-    def _subsample_frame(self, X, y):
-        sample_size = self.resolve_sample_size()
-        if sample_size is None or len(X) <= sample_size:
-            return X, y
-        if not self.is_regression:
-            from sklearn.model_selection import train_test_split
-
-            X_sample, _, y_sample, _ = train_test_split(
-                X,
-                y,
-                train_size=sample_size,
-                stratify=y,
-                random_state=self.args.seed,
-            )
-            return X_sample.reset_index(drop=True), y_sample
-        rng = np.random.RandomState(self.args.seed)
-        idx = rng.choice(len(X), size=sample_size, replace=False)
-        return X.iloc[idx].reset_index(drop=True), y[idx]
 
     def _load_tabfm_model(self):
         general = self.args.config.get("general", {}) or {}
@@ -182,7 +164,7 @@ class TabFMMethod(Method):
             self.model = target_cls(**wrapper_kwargs)
 
     def fit(self, data, info, train=True, config=None):
-        N, C, y = data
+        N, C, y = self.limit_training_context(data)
         self.D = Dataset(N, C, y, info)
         self.N, self.C, self.y = self.D.N, self.D.C, self.D.y
         self.is_binclass, self.is_multiclass, self.is_regression = (
@@ -203,7 +185,6 @@ class TabFMMethod(Method):
             None if self.C is None else self.C["train"],
         )
         y_train = self.y["train"]
-        X_train, y_train = self._subsample_frame(X_train, y_train)
         self.sampled_X = X_train
         self.sampled_Y = y_train
         with weights_download_hint(getattr(self.args, "model_type", "tabfm")):
@@ -212,16 +193,24 @@ class TabFMMethod(Method):
             self.model.fit(X_train, y_train)
             self.fit_time = time.time() - tic
 
+    def _predict_rows(self, frame):
+        predict = self.model.predict if self.is_regression else self.model.predict_proba
+        count = len(frame)
+        size = query_batch_size(self.args.config.get("general") or {})
+
+        def score(start, stop):
+            block = frame if stop - start == count else frame.iloc[start:stop].reset_index(drop=True)
+            return predict(block)
+
+        return predict_in_batches(score, count, size, retry_cuda_oom=torch.device(self.args.device).type == "cuda")
+
     def predict(self, data, info, model_name):
         N, C, y = data
         self.data_format(False, N, C, y)
         X_test = self._to_frame(self.N_test, self.C_test)
 
         tic = time.time()
-        if self.is_regression:
-            test_logit = self.model.predict(X_test)
-        else:
-            test_logit = self.model.predict_proba(X_test)
+        test_logit = self._predict_rows(X_test)
         self.predict_time = time.time() - tic
 
         test_logit = np.asarray(test_logit).astype(np.float32)

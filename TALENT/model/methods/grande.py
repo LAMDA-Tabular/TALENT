@@ -98,6 +98,7 @@ class GRANDEMethod(Method):
         
         self.model.cat_idx = cat_idx
         X_train, y_train, X_val, y_val = self.model.preprocess_data(X_train, y_train, X_val, y_val)
+        self.model.batch_size = min(self.args.batch_size, len(y_train))
         self.model.number_of_variables = X_train.shape[1]
         if self.model.task_type in ['binclass', 'multiclass']:
             self.model.number_of_classes = len(np.unique(y_train))
@@ -110,7 +111,7 @@ class GRANDEMethod(Method):
         self.model.double()
 
         train_dataset = TensorDataset(torch.tensor(X_train, dtype=torch.float32 if self.args.use_float else torch.float64), torch.tensor(y_train, dtype=torch.float32 if self.args.use_float else torch.float64))
-        self.train_loader = DataLoader(train_dataset, batch_size=self.args.batch_size, shuffle=True, drop_last=True)
+        self.train_loader = DataLoader(train_dataset, batch_size=self.model.batch_size, shuffle=True, drop_last=True)
 
         if X_val is not None and y_val is not None:
             val_dataset = TensorDataset(torch.tensor(X_val, dtype=torch.float32 if self.args.use_float else torch.float64), torch.tensor(y_val, dtype=torch.float32 if self.args.use_float else torch.float64))
@@ -171,7 +172,7 @@ class GRANDEMethod(Method):
             
         y_test = np.array(self.y_test)
             
-        # X_test = self.model.apply_preprocessing(X_test)
+        X_test = self.model.apply_preprocessing(X_test)
             
         test_dataset = TensorDataset(torch.tensor(X_test, dtype=torch.float64), torch.tensor(y_test, dtype=torch.float64))
         self.test_loader = DataLoader(test_dataset, batch_size=1024, shuffle=False, drop_last=False)
@@ -181,7 +182,7 @@ class GRANDEMethod(Method):
         with torch.no_grad():
             for i, (X, y) in tqdm(enumerate(self.test_loader)):
                 X, y = X.to(self.args.device), y.to(self.args.device)
-                pred = self.model(X)
+                pred = self._forward_logits(X)
                 test_logit.append(pred)
                 test_label.append(y)
         self.predict_time = time.time() - tic
@@ -193,9 +194,9 @@ class GRANDEMethod(Method):
         vl = self.criterion(test_logit, test_label__).item()
             
         if self.is_binclass:
-            test_logit = np.stack([-test_logit.cpu().squeeze(), test_logit.cpu().squeeze()], axis=-1)
+            test_logit = torch.cat((torch.zeros_like(test_logit), test_logit), dim=1).cpu().numpy()
 
-        vres, metric_name = self.metric(test_logit, test_label, self.y_info)
+        vres, metric_name = self._native_metric(test_logit, test_label, self.y_info)
 
         # Denormalize regression predictions back to original scale
         if self.is_regression and self.y_info.get('policy') == 'mean_std':
@@ -207,6 +208,14 @@ class GRANDEMethod(Method):
 
         return vl, vres, metric_name, test_logit
 
+    def _forward_logits(self, X):
+        output = self.model(X)
+        if self.is_regression or self.model.from_logits:
+            return output
+        if self.is_binclass:
+            return torch.logit(output, eps=torch.finfo(output.dtype).eps)
+        return output.clamp_min(torch.finfo(output.dtype).tiny).log()
+
     def train_epoch(self, epoch):
         self.model.train()
         tl = Averager()
@@ -215,7 +224,7 @@ class GRANDEMethod(Method):
 
             y = y.long() if self.is_multiclass else y.unsqueeze(1)
             X, y = X.to(self.args.device), y.to(self.args.device)
-            loss = self.criterion(self.model(X), y)
+            loss = self.criterion(self._forward_logits(X), y)
 
             tl.add(loss.item())
             self.optimizer.zero_grad()
@@ -241,7 +250,7 @@ class GRANDEMethod(Method):
         with torch.no_grad():
             for i, (X, y) in tqdm(enumerate(self.val_loader)):
                 X, y = X.to(self.args.device), y.to(self.args.device)
-                pred = self.model(X)
+                pred = self._forward_logits(X)
                 test_logit.append(pred)
                 test_label.append(y)
                 
@@ -259,9 +268,9 @@ class GRANDEMethod(Method):
             measure = np.greater_equal
 
         if self.is_binclass:
-            test_logit = np.stack([-test_logit.cpu().squeeze(), test_logit.cpu().squeeze()], axis=-1)
+            test_logit = torch.cat((torch.zeros_like(test_logit), test_logit), dim=1)
             
-        vres, metric_name = self.metric(test_logit, test_label, self.y_info)
+        vres, metric_name = self._native_metric(test_logit, test_label, self.y_info)
 
         print('epoch {}, val, loss={:.4f} {} result={:.4f}'.format(epoch, vl, task_type, vres[0]))
 
@@ -280,4 +289,4 @@ class GRANDEMethod(Method):
             self.val_count += 1
             if self.val_count > 20:
                 self.continue_training = False
-        torch.save(self.trlog, osp.join(self.args.save_path, 'trlog'))  
+        torch.save(self.trlog, osp.join(self.args.save_path, 'trlog'))

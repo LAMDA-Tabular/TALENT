@@ -69,9 +69,6 @@ Retrieves a data sample and its label.
 
 **Returns:**
 
-* **Tuple[Union[Tensor, Tuple[Tensor, Tensor]], Tensor]** - 
-  - **data**: Feature tensor(s):
-    - If both numerical and categorical features exist: `(self.X_num[i], self.X_cat[i])`.
-    - If only categorical features exist: `self.X_cat[i]`.
-    - If only numerical features exist: `self.X_num[i]`.
-  - **label**: Corresponding target label (`self.Y[i]`). 
+Returns ``(features, target)``. When both feature types are present,
+``features`` is the pair ``(numerical, categorical)``. When only one is
+present, ``features`` is that tensor.

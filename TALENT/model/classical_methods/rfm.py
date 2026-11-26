@@ -11,6 +11,7 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.metrics import accuracy_score, mean_squared_error
 
 from xrfm import RFM
+from xrfm.rfm_src.class_conversion import ClassificationConverter
 
 
 class RFMMethod(XRFMMethod):
@@ -57,6 +58,8 @@ class RFMMethod(XRFMMethod):
             'numerical_indices': numerical_indices
         }
         self.construct_model(categorical_info=categorical_info)
+        if not train:
+            return
         
         if self.C is None:
             assert self.N is not None
@@ -109,8 +112,15 @@ class RFMMethod(XRFMMethod):
                 self.model.predict(X_val) if self.is_regression else self.model.predict_proba(X_val)
             )
 
-        checkpoint = {}
-        checkpoint['state_dict'] = self.model.state_dict()
+        # xrfm keeps the fitted kernel and its coefficients outside the
+        # PyTorch state_dict. The centers are the preprocessed training rows.
+        checkpoint = {
+            'state_dict': self.model.state_dict(),
+            'weights': self.model.weights,
+            'M': self.model.M,
+            'sqrtM': self.model.sqrtM,
+            'bandwidth': self.model.kernel_obj.bandwidth,
+        }
 
         torch.save(checkpoint, ops.join(self.args.save_path, f'best-val-{self.args.seed}.pt'))
 
@@ -120,8 +130,20 @@ class RFMMethod(XRFMMethod):
     def predict(self, data, info, model_name):
         N, C, y = data
         self.data_format(False, N, C, y)
-        checkpoint = torch.load(ops.join(self.args.save_path, f'best-val-{self.args.seed}.pt'))
+        checkpoint = torch.load(ops.join(self.args.save_path, f'best-val-{self.args.seed}.pt'),
+                                map_location=self.args.device)
         self.model.load_state_dict(checkpoint['state_dict'])
+        if 'weights' in checkpoint:
+            self.model.weights = checkpoint['weights']
+            self.model.M = checkpoint['M']
+            self.model.sqrtM = checkpoint['sqrtM']
+            self.model.kernel_obj.bandwidth = checkpoint['bandwidth']
+            self.model.centers = torch.as_tensor(self.N['train'], dtype=torch.float32, device=self.args.device)
+            if not self.is_regression:
+                self.model.class_converter = ClassificationConverter(mode='zero_one', n_classes=max(2, self.d_out))
+        elif getattr(self.model, 'weights', None) is None:
+            raise ValueError("This legacy RFM checkpoint contains no fitted weights. "
+                             "Fit RFM again to create a reloadable checkpoint.")
 
         # Convert test data and labels to tensors
         if self.C_test is None:

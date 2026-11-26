@@ -1,5 +1,5 @@
 Classical Methods
-================
+=================
 
 Overview
 --------
@@ -7,7 +7,7 @@ Overview
 The classical methods module provides implementations of traditional machine learning algorithms for tabular data analysis. All methods inherit from the base `classical_methods` class and provide a unified interface for training, prediction, and evaluation.
 
 Available Methods
-----------------
+-----------------
 
 **Classification and Regression Methods:**
 - Support Vector Machine (SVM)
@@ -29,7 +29,7 @@ Available Methods
 - Dummy Classifier/Regressor
 
 Common Features
---------------
+---------------
 
 All classical methods in TALENT share the following features:
 
@@ -41,7 +41,7 @@ All classical methods in TALENT share the following features:
 - Training time measurement
 
 Usage Example
-------------
+-------------
 
 .. code-block:: python
 

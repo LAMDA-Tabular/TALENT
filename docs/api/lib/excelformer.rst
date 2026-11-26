@@ -1,5 +1,5 @@
 **ExcelFormer**
-==============
+===============
 
 A deep learning model for tabular data prediction, featuring a semi-permeable attention module to address rotational invariance, tailored data augmentation, and an attentive feedforward network, making it a reliable solution across diverse datasets.
 

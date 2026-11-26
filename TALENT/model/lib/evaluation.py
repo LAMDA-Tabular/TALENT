@@ -32,6 +32,8 @@ from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
+from TALENT.benchmark.measurement import elapsed_call
+
 
 # ----------------------------------------------------------------------------
 #  Helpers
@@ -77,10 +79,13 @@ def standardize_predict_proba(
     """
     from TALENT.model.method_registry import OutputType
 
-    if is_regression or output_type == OutputType.CLASS_LABELS:
+    if is_regression or output_type in (None, OutputType.CLASS_LABELS):
         return None
 
     arr = _to_numpy(predictions).astype(np.float64, copy=False)
+
+    if arr.ndim == 2 and arr.shape[1] == 1:
+        arr = arr[:, 0]
 
     if output_type == OutputType.PROBABILITIES:
         if arr.ndim == 1:
@@ -94,7 +99,7 @@ def standardize_predict_proba(
     # OutputType.LOGITS
     if arr.ndim == 1:
         # Sigmoid for a single binary logit.
-        sig = 1.0 / (1.0 + np.exp(-arr))
+        sig = np.exp(-np.logaddexp(0.0, -arr))
         return np.stack([1.0 - sig, sig], axis=1)
 
     # Softmax (numerically stabilised).
@@ -107,6 +112,22 @@ def standardize_predict_proba(
 #  Main entry point
 # ----------------------------------------------------------------------------
 
+def _custom_score(scorer, train_labels, test_labels, predictions, probabilities, labels):
+    from sklearn.preprocessing import LabelEncoder
+
+    targets = np.asarray(test_labels).reshape(-1)
+    if scorer.response == "prediction":
+        response = _to_numpy(predictions).reshape(-1)
+    else:
+        targets = LabelEncoder().fit(np.asarray(train_labels).reshape(-1)).transform(targets)
+        response = probabilities if scorer.response == "proba" else labels
+        if response is None:
+            if scorer.response == "proba":
+                raise ValueError(f"Scorer {scorer.name!r} requires probabilities")
+            response = _to_numpy(predictions).reshape(-1)
+    return scorer(targets, response)
+
+
 def evaluate(
     method: Any,
     train_val_data: Tuple[Any, Any, Any],
@@ -117,6 +138,9 @@ def evaluate(
     output_type=None,
     tune_threshold: bool = True,
     threshold_metric: str = "f1",
+    decision_threshold: Optional[float] = None,
+    return_validation_predictions: bool = False,
+    scoring=None,
 ) -> Dict[str, Any]:
     """Predict + (optionally) tune threshold on val + return enriched metrics.
 
@@ -143,6 +167,8 @@ def evaluate(
         threshold on the validation set.
     threshold_metric : {"f1", "accuracy", "precision", "recall", "balanced_accuracy"}
         Metric to optimise when tuning the threshold.
+    decision_threshold : float, optional
+        Apply this previously selected binary threshold directly.
 
     Returns
     -------
@@ -160,12 +186,17 @@ def evaluate(
           threshold (binclass) or ``argmax(predict_proba)`` otherwise
         - ``threshold`` -- the tuned threshold, or ``None`` if not tuned
     """
+    from TALENT.benchmark.scoring import Scorer
+
     task = info.get("task_type")
     is_regression = task == "regression"
     is_binclass = task == "binclass"
 
     # ------ 1. Predict on TEST ------------------------------------------------
-    test_result = method.predict(test_data, info, model_name=model_name)
+    device = getattr(getattr(method, "args", None), "device", None)
+    test_result, predict_time = elapsed_call(
+        "predict_seconds", device, method.predict, test_data, info, model_name=model_name
+    )
     if len(test_result) == 4:
         vl, vres, metric_names, test_predictions = test_result
     elif len(test_result) == 3:
@@ -177,16 +208,24 @@ def evaluate(
             f"{type(method).__name__!r}"
         )
 
-    # Snapshot the test-time state -- a second predict() call below would
-    # overwrite ``method.y_test`` and ``method.predict_time``.
     test_labels = method.y_test if hasattr(method, "y_test") else None
     y_info = method.y_info if hasattr(method, "y_info") else None
-    test_predict_time = getattr(method, "predict_time", None)
+    test_proba = standardize_predict_proba(test_predictions, output_type, is_regression)
 
     # ------ 2. Tune threshold on the validation set ---------------------------
     threshold: Optional[float] = None
+    validation_predictions = validation_proba = None
+    select_threshold = decision_threshold is None and is_binclass and tune_threshold
 
-    if is_binclass and tune_threshold:
+    if decision_threshold is not None:
+        threshold = decision_threshold
+        scores = test_predictions if test_proba is None else test_proba
+        vres, metric_names = method.metric(scores, test_labels, y_info, threshold=threshold)
+    if select_threshold or return_validation_predictions:
+        # Adapters replace their query arrays and loader on each predict call.
+        test_state = {name: getattr(method, name)
+                      for name in ("N_test", "C_test", "y_test", "test_loader", "predict_time")
+                      if hasattr(method, name)}
         try:
             val_data = _val_as_test(train_val_data)
             val_result = method.predict(val_data, info, model_name=model_name)
@@ -197,32 +236,34 @@ def evaluate(
             val_labels = method.y_test if hasattr(method, "y_test") else None
 
             val_proba = standardize_predict_proba(
-                val_predictions, output_type, is_regression=False
+                val_predictions, output_type, is_regression=is_regression
             )
-            if val_proba is not None and val_proba.shape[1] == 2 and val_labels is not None:
+            if return_validation_predictions:
+                validation_predictions = _to_numpy(val_predictions)
+                validation_proba = val_proba
+            if select_threshold and val_proba is not None and val_proba.shape[1] == 2 and val_labels is not None:
                 from TALENT.model.lib.threshold import tune_threshold as _find_threshold
                 threshold, _ = _find_threshold(
-                    val_labels, val_proba, metric=threshold_metric
+                    _to_numpy(val_labels), val_proba, metric=threshold_metric
                 )
 
                 # Recompute the test-set metrics using the tuned threshold.
                 vres, metric_names = method.metric(
-                    test_predictions, test_labels, y_info, threshold=threshold
+                    test_proba, test_labels, y_info, threshold=threshold
                 )
         except Exception as exc:  # pragma: no cover -- defensive fallback
+            if return_validation_predictions or isinstance(threshold_metric, Scorer):
+                raise
             warnings.warn(
                 f"Threshold tuning failed ({exc!r}); "
                 f"falling back to argmax metrics."
             )
             threshold = None
-
-    if test_predict_time is not None:
-        method.predict_time = test_predict_time
+        finally:
+            for name, value in test_state.items():
+                setattr(method, name, value)
 
     # ------ 3. Build predict_proba / predict_labels --------------------------
-    test_proba = standardize_predict_proba(
-        test_predictions, output_type, is_regression=is_regression
-    )
     predict_labels: Optional[np.ndarray] = None
     if test_proba is not None:
         if is_binclass and threshold is not None:
@@ -230,7 +271,17 @@ def evaluate(
         else:
             predict_labels = test_proba.argmax(axis=1)
 
+    if scoring is not None:
+        if scoring.name in metric_names:
+            raise ValueError(f"Custom scorer name {scoring.name!r} duplicates a reported metric")
+        value = _custom_score(scoring, train_val_data[2]["train"], test_data[2]["test"],
+                              test_predictions, test_proba, predict_labels)
+        vres, metric_names = (*vres, value), (*metric_names, scoring.name)
+
     return {
+        "validation_predictions": validation_predictions,
+        "validation_predict_proba": validation_proba,
+        "predict_time": predict_time,
         "loss": float(vl) if vl == vl else float("nan"),  # NaN-safe coercion
         "metrics": tuple(vres),
         "metric_names": tuple(metric_names),

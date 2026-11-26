@@ -9,7 +9,7 @@ The classical methods module provides implementations of traditional machine lea
 
 
 Available Methods
-----------------
+-----------------
 
 **Base Components:**
 
@@ -26,7 +26,7 @@ Available Methods
 
 - :doc:`Logistic Regression <classical_model/logreg>`: Linear model for classification tasks
 - :doc:`Linear Regression <classical_model/lr>`: Linear model for regression tasks
-- :doc:`Support Vector Machine <classical_model/svm>`: SVM classifier with kernel methods
+- :doc:`Support Vector Machine <classical_model/svm>`: Calibrated linear classifier or linear support vector regressor
 
 **Distance-Based Methods:**
 
@@ -39,7 +39,7 @@ Available Methods
 
 **Utility Methods:**
 
-- :doc:`Dummy Classifier <classical_model/dummy>`: Baseline classifier for comparison and testing
+- :doc:`Dummy Baseline <classical_model/dummy>`: Baseline classifier or regressor
 
 .. toctree::
    :maxdepth: 2

@@ -64,7 +64,7 @@ class T2GFormerMethod(Method):
             task_type = 'classification'
             measure = np.greater_equal
 
-        vres, metric_name = self.metric(test_logit, test_label, self.y_info)
+        vres, metric_name = self._native_metric(test_logit, test_label, self.y_info)
 
 
         print('epoch {}, val, loss={:.4f} {} result={:.4f}'.format(epoch, vl, task_type, vres[0]))

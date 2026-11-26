@@ -51,7 +51,6 @@ class XRFMMethod(classical_methods):
                           classification_mode=model_config.get('classification_mode', 'prevalence'))
 
     def data_format(self, is_train = True, N = None, C = None, y = None):
-        num_numerical_features = self.N['train'].shape[1] if self.N is not None else 0
         if is_train:
             self.N, self.C, self.num_new_value, self.imputer, self.cat_new_value = data_nan_process(self.N, self.C, self.args.num_nan_policy, self.args.cat_nan_policy)
             self.y, self.y_info, self.label_encoder = data_label_process(self.y, self.is_regression)
@@ -62,6 +61,7 @@ class XRFMMethod(classical_methods):
             self.N, self.normalizer = data_norm_process(self.N, self.args.normalization, self.args.seed)
             
             # do not normalize the categorical features
+            num_numerical_features = self.N['train'].shape[1] if self.N is not None else 0
             self.N, self.C, self.ord_encoder, self.mode_values, self.cat_encoder = data_enc_process(self.N, self.C, self.args.cat_policy, self.y['train'])
             
             if self.is_regression:
@@ -132,6 +132,8 @@ class XRFMMethod(classical_methods):
             'numerical_indices': numerical_indices
         }
         self.construct_model(categorical_info=categorical_info)
+        if not train:
+            return
         
         if self.C is None:
             assert self.N is not None
@@ -188,7 +190,8 @@ class XRFMMethod(classical_methods):
         N, C, y = data
         self.data_format(False, N, C, y)
 
-        checkpoint = torch.load(ops.join(self.args.save_path, f'best-val-{self.args.seed}.pt'))
+        checkpoint = torch.load(ops.join(self.args.save_path, f'best-val-{self.args.seed}.pt'),
+                                map_location=self.args.device)
 
         if self.C is None:
             assert self.N is not None

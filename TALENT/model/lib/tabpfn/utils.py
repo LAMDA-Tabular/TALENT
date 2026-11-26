@@ -1,5 +1,6 @@
 import numpy as np
 import random
+from contextlib import nullcontext
 
 import torch
 from torch.utils.checkpoint import checkpoint
@@ -281,7 +282,7 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
         # Initialize results array size S, B, Classes
 
         # no_grad disables inference_mode, because otherwise the gradients are lost
-        inference_mode_call = torch.inference_mode() if inference_mode and no_grad else NOP()
+        inference_mode_call = torch.inference_mode() if inference_mode and no_grad else nullcontext()
         with inference_mode_call:
             start = time.time()
             output = model(

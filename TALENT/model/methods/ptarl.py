@@ -87,7 +87,7 @@ class PTARLMethod(Method):
             
         vl = self.criterion(torch.tensor(test_logit), torch.tensor(test_label)).item()     
 
-        vres, metric_name = self.metric(test_logit, test_label, self.y_info)
+        vres, metric_name = self._native_metric(test_logit, test_label, self.y_info)
 
         # Denormalize regression predictions back to original scale
         if self.is_regression and self.y_info.get('policy') == 'mean_std':

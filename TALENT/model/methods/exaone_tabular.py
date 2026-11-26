@@ -16,6 +16,7 @@ Setup:
 
 import numpy as np
 
+from TALENT.benchmark.measurement import timed_call
 from TALENT.model.methods.foundation_base import SklearnFoundationMethod, resolve_n_estimators
 
 
@@ -41,8 +42,12 @@ class EXAONETabularMethod(SklearnFoundationMethod):
         for k in ('compute_dtype', 'max_vram_bytes', 'weights', 'revision'):
             if k in general:
                 kwargs[k] = general[k]
+        if general.get('model_path') is not None:
+            kwargs['weights'] = general['model_path']
         model_cls = EXAONETabularRegressor if self.is_regression else EXAONETabularClassifier
-        self.model = model_cls.from_pretrained(**kwargs)
+        self.model = timed_call("load_seconds", model_cls.from_pretrained, **kwargs)
+        if general.get('model_path') is not None:
+            self.resolved_checkpoint = str(general['model_path'])
 
     # EXAONE-Tabular validates for dense 2-D float tables and 1-D NumPy targets
     # (a categorical-only dataset would otherwise arrive as an int64 matrix).

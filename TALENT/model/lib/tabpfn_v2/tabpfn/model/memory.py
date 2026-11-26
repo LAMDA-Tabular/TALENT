@@ -236,7 +236,7 @@ class MemoryUsageEstimator:
         """How much memory to use at most in GB, the memory usage will be calculated
         based on an estimation of the systems free memory.
 
-        For CUDA will use the free memory of the GPU. For CPU will default to 32 GB.
+        On CPU, use the configured fallback when available RAM cannot be measured.
 
         Returns:
         -------
@@ -244,14 +244,14 @@ class MemoryUsageEstimator:
         """
         # TODO(Arjun): Make it accept a value for GPU specified by the user
 
-        # TODO: Get System Stats and adapt to free memory for default case
-
         if device.type.startswith("cpu"):
             try:
-                free_memory = (
-                    os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1e9
-                )
-            except ValueError:
+                page_size = os.sysconf("SC_PAGE_SIZE")
+                available_pages = os.sysconf("SC_AVPHYS_PAGES")
+                if page_size <= 0 or available_pages < 0:
+                    raise ValueError("System reported an unavailable page count or size")
+                free_memory = page_size * available_pages
+            except (AttributeError, OSError, ValueError):
                 warnings.warn(
                     "Could not get system memory, defaulting to"
                     f" {default_gb_cpu_if_failed_to_calculate} GB",

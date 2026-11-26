@@ -29,7 +29,12 @@ class TabPTMData(Dataset):
         self.Y, self.y_info = Y[part], y_info
 
         self.dataset = dataset        
-        self.num_class = 1 if dataset.is_regression else torch.unique(Y['train']).shape[0]
+        if dataset.is_regression:
+            self.num_class = 1
+        elif 'train' in Y:
+            self.num_class = torch.unique(Y['train']).shape[0]
+        else:
+            self.num_class = y_info['n_classes']
         self.is_regression = dataset.is_regression
 
     def get_dim_in(self):

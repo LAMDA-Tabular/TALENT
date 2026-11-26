@@ -1,5 +1,5 @@
 **NODE**
-=======
+========
 
 A tree-mimic method that generalizes oblivious decision trees, combining gradient-based optimization with hierarchical representation learning.
 

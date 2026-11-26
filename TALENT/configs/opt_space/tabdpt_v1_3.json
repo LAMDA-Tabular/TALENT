@@ -1,0 +1,13 @@
+{
+    "tabdpt_v1_3": {
+        "model": {},
+        "training": {},
+        "general": {
+            "n_estimators": 8,
+            "context_size": 2048,
+            "temperature": 0.8,
+            "permute_classes": true,
+            "context_reduction": "retrieval"
+        }
+    }
+}

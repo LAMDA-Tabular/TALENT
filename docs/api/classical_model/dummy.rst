@@ -1,10 +1,10 @@
 ====================================
-Dummy Classifier
+Dummy Baseline
 ====================================
 
 Dummy Classifier classical method implementation.
 
-This section contains the Dummy Classifier implementation for classification tasks. Dummy Classifier is a classifier that makes predictions using simple rules, useful as a baseline for comparison with more sophisticated classifiers.
+The dummy baseline uses class frequencies for classification and the training mean for regression by default.
 
 .. automodule:: TALENT.model.classical_methods.dummy
    :members:
@@ -14,11 +14,11 @@ This section contains the Dummy Classifier implementation for classification tas
 .. class:: DummyMethod
    :noindex:
 
-   Dummy Classifier method for classification tasks.
+   Baseline method for classification and regression.
    
    **Key Features:**
    
-   - Uses sklearn's DummyClassifier for classification
+   - Uses scikit-learn's DummyClassifier and DummyRegressor
    - Provides baseline predictions for comparison
    - Supports both binary and multiclass classification
    - Automatically handles data preprocessing including normalization and encoding
@@ -50,7 +50,7 @@ This section contains the Dummy Classifier implementation for classification tas
       
       **Model Creation:**
       
-      - Creates `DummyClassifier` classifier
+      - Creates a classifier or regressor for the dataset task
       - Configures parameters like strategy, random_state, etc.
 
    .. method:: fit(data, info, train=True, config=None)
@@ -88,18 +88,19 @@ This section contains the Dummy Classifier implementation for classification tas
       
       **Returns:**
       
-      * **test_logit** (*array-like*) -- Test predictions (class labels for classification)
+      A tuple ``(metric_values, metric_names, predictions)``. The predictions contain class probabilities or regression values in the original target units.
       
       **Prediction Process:**
       
       1. **Data Preprocessing:** Applies same preprocessing as training data
       2. **Model Loading:** Loads the trained Dummy Classifier model
       3. **Prediction:** Generates baseline predictions using simple rules
-      4. **Output:** Returns predicted class labels
+      4. **Output:** Returns class probabilities or predicted target values
 
 **Evaluation Metrics:**
 
-- **For classification:** returns Accuracy, Avg_Precision, Avg_Recall, F1 metrics
+- **For regression:** returns MAE, R2 and RMSE
+- **For classification:** returns Accuracy, Avg_Recall, Avg_Precision, F1, LogLoss, AUC, Brier and ECE
 
 **References:**
 

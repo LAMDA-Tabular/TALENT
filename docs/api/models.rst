@@ -34,7 +34,7 @@ Multi-Layer Perceptron (MLP)
    
    where :math:`L` is the number of hidden layers.
 
-   .. method:: __init__(d_in, d_out, d_layers, dropout)
+   .. method:: __init__(*, d_in, d_out, d_layers, dropout)
       :noindex:
       
       Initialize the MLP architecture.
@@ -120,7 +120,7 @@ Residual Network (ResNet)
    
    where :math:`F(h_i, W_i)` is the residual function.
 
-   .. method:: __init__(d_in, d, d_hidden_factor, n_layers, activation, normalization, hidden_dropout, residual_dropout, d_out)
+   .. method:: __init__(*, d_in, d, d_hidden_factor, n_layers, activation, normalization, hidden_dropout, residual_dropout, d_out)
       :noindex:
       
       Initialize the ResNet architecture with configurable components.
@@ -137,7 +137,7 @@ Residual Network (ResNet)
       * **residual_dropout** (*float*) -- Dropout probability for residual connections
       * **d_out** (*int*) -- Output dimension
 
-   .. method:: forward(x, x_cat=None)
+   .. method:: forward(x, x_cat)
       :noindex:
       
       Forward pass through the ResNet architecture.
@@ -211,7 +211,7 @@ Self-Normalizing Network (SNN)
 
    Lightweight neural network with self-normalizing properties using SELU activation.
 
-   .. method:: __init__(d_in, d_out, d_layers, dropout)
+   .. method:: __init__(*, d_in, d_layers, dropout, d_out, categories, d_embedding)
       :noindex:
       
       Initialize SNN with SELU activations for self-normalization.
@@ -223,7 +223,7 @@ Self-Normalizing Network (SNN)
       * **d_layers** (*List[int]*) -- Hidden layer dimensions
       * **dropout** (*float*) -- Dropout probability
 
-   .. method:: forward(x, x_cat=None)
+   .. method:: forward(x_num, x_cat)
       :noindex:
       
       Forward pass with SELU activation for self-normalization.
@@ -270,7 +270,7 @@ Feature Tokenizer Transformer (FT-Transformer)
    
    For categorical features: :math:`t_i^{\text{cat}} = \text{Embedding}(x_i^{\text{cat}})`
 
-   .. method:: __init__(d_numerical, categories, d_token, n_layers, n_heads, d_ffn_factor, attention_dropout, ffn_dropout, residual_dropout, activation, prenormalization, d_out)
+   .. method:: __init__(*, d_numerical, categories, token_bias, n_layers, d_token, n_heads, d_ffn_factor, attention_dropout, ffn_dropout, residual_dropout, activation, prenormalization, initialization, kv_compression, kv_compression_sharing, d_out)
       :noindex:
       
       Initialize the FT-Transformer architecture.
@@ -378,7 +378,7 @@ Feature Tokenizer Transformer (FT-Transformer)
 
    Multi-head attention mechanism optimized for tabular data.
 
-   .. method:: __init__(d, n_heads, dropout, bias)
+   .. method:: __init__(d, n_heads, dropout, initialization)
       :noindex:
       
       Initialize multi-head attention.
@@ -388,7 +388,7 @@ Feature Tokenizer Transformer (FT-Transformer)
       * **d** (*int*) -- Input dimension
       * **n_heads** (*int*) -- Number of attention heads
       * **dropout** (*float*) -- Attention dropout probability
-      * **bias** (*bool*) -- Whether to use bias in projections
+      * **initialization** (*str*) -- Projection weight initialization (xavier or kaiming)
 
    .. method:: forward(x_q, x_kv, key_compression, value_compression)
       :noindex:
@@ -466,8 +466,7 @@ TabNet
    
    where :math:`\gamma` is the relaxation parameter.
 
-   .. method:: __init__(n_steps, gamma, n_independent, n_shared, momentum, optimizer_params, scheduler_params, mask_type, lambda_sparse, seed)
-      :noindex:
+   **Constructor options**
       
       Initialize TabNet classifier.
       
@@ -484,7 +483,7 @@ TabNet
       * **lambda_sparse** (*float*) -- Sparsity regularization coefficient
       * **seed** (*int*) -- Random seed
 
-   .. method:: fit(X_train, y_train, eval_set, eval_name, eval_metric, max_epochs, patience, batch_size, virtual_batch_size, num_workers, drop_last, callbacks)
+   .. method:: fit(X_train, y_train, device, task, eval_set=None, eval_name=None, eval_metric=None, loss_fn=None, weights=0, max_epochs=100, patience=10, batch_size=1024, virtual_batch_size=128, num_workers=0, drop_last=True, callbacks=None, pin_memory=True, from_unsupervised=None, warm_start=False, augmentations=None, compute_importance=True)
       :noindex:
       
       Train the TabNet model.
@@ -521,7 +520,7 @@ TabNet
       
       where :math:`o_k` is the raw output for class :math:`k`.
 
-   .. method:: explain(X, normalize)
+   .. method:: explain(X, normalize=False)
       :noindex:
       
       Generate feature importance explanations using attention masks.
@@ -533,7 +532,7 @@ TabNet
       
       **Returns:**
       
-      * **np.ndarray** -- Feature importance matrix
+      * **tuple** -- Feature importance matrix and a dictionary of per-step masks
       
       **Explanation Generation:**
       
@@ -579,7 +578,7 @@ GRANDE (Gradient-Boosted Neural Decision Ensembles)
    
    GRANDE simulates decision trees using neural operations with entmax for sparse selection.
 
-   .. method:: __init__(batch_size, task_type, depth, n_estimators, dropout)
+   .. method:: __init__(*, batch_size, task_type, **args)
       :noindex:
       
       Initialize GRANDE model.
@@ -635,15 +634,6 @@ GRANDE (Gradient-Boosted Neural Decision Ensembles)
             
             \text{output} = \sum_{e,l} w_e \cdot p_{e,l} \cdot \text{softmax}(v_{e,l})
 
-   .. method:: get_representation(inputs)
-      :noindex:
-      
-      Extract intermediate tree representations for analysis.
-      
-      **Returns:**
-      
-      * **torch.Tensor** -- Tree path representations
-
 Neural Oblivious Decision Ensembles (NODE)
 ------------------------------------------
 
@@ -652,28 +642,28 @@ Neural Oblivious Decision Ensembles (NODE)
    :undoc-members:
    :show-inheritance:
 
-.. class:: Node
+.. class:: NODE
    :noindex:
 
    Neural implementation of oblivious decision trees with differentiable splits.
 
-   .. method:: __init__(input_dim, layer_dim, output_dim, num_layers, tree_dim, depth, choice_function, bin_function)
+   .. method:: __init__(*, d_in, num_layers, layer_dim, depth, tree_dim, choice_function, bin_function, d_out)
       :noindex:
       
       Initialize NODE architecture.
       
       **Parameters:**
       
-      * **input_dim** (*int*) -- Input feature dimension
+      * **d_in** (*int*) -- Input feature dimension
       * **layer_dim** (*int*) -- Hidden layer dimension
-      * **output_dim** (*int*) -- Output dimension
+      * **d_out** (*int*) -- Output dimension
       * **num_layers** (*int*) -- Number of NODE layers
       * **tree_dim** (*int*) -- Number of trees per layer
       * **depth** (*int*) -- Tree depth
       * **choice_function** (*str*) -- Function for feature selection ('entmax15')
       * **bin_function** (*str*) -- Function for threshold selection ('entmoid15')
 
-   .. method:: forward(x)
+   .. method:: forward(x_num, x_cat)
       :noindex:
       
       Forward pass through oblivious decision trees.
@@ -693,12 +683,12 @@ GrowNet (Gradient Boosting with Neural Networks)
    :undoc-members:
    :show-inheritance:
 
-.. class:: GrowNet
+.. class:: DynamicNet
    :noindex:
 
    Gradient boosting framework with neural network weak learners.
 
-   .. method:: __init__(input_dim, output_dim, boost_rate, layers_per_net, layer_dims, dropout)
+   .. method:: __init__(lr, categories, d_embedding, device=None)
       :noindex:
       
       Initialize GrowNet with neural weak learners.
@@ -709,7 +699,7 @@ GrowNet (Gradient Boosting with Neural Networks)
       2. **Boosting Update:** Add weak learners with adaptive weights
       3. **Gradient Computation:** Compute gradients for next weak learner
 
-   .. method:: forward(x)
+   .. method:: forward(x_num, x_cat)
       :noindex:
       
       Forward pass through the boosted ensemble.
@@ -723,10 +713,10 @@ GrowNet (Gradient Boosting with Neural Networks)
       where :math:`h_m` is the m-th weak learner and :math:`\gamma_m` is the boosting rate.
 
 Distance-Based Models
-====================
+=====================
 
 Modern Neighborhood Component Analysis (ModernNCA)
------------------------------------------
+--------------------------------------------------
 
 .. automodule:: TALENT.model.models.modernNCA
    :members:
@@ -742,7 +732,7 @@ Modern Neighborhood Component Analysis (ModernNCA)
    
    ModernNCA learns embeddings for distance-based classification.
 
-   .. method:: __init__(d_in, d_out, k, dropout, d_embedding)
+   .. method:: __init__(*, d_in, d_num, d_out, dim, dropout, d_block, n_blocks, num_embeddings, temperature=1.0, sample_rate=0.8)
       :noindex:
       
       Initialize ModernNCA model.
@@ -751,9 +741,9 @@ Modern Neighborhood Component Analysis (ModernNCA)
       
       * **d_in** (*int*) -- Input feature dimension
       * **d_out** (*int*) -- Output dimension (number of classes)
-      * **k** (*int*) -- Number of nearest neighbors to consider
+      * **d_num** (*int*) -- Number of numerical features
       * **dropout** (*float*) -- Dropout probability
-      * **d_embedding** (*int*) -- Embedding dimension
+      * **dim** (*int*) -- Embedding dimension
 
    .. method:: forward(x, y, candidate_x, candidate_y, is_train)
       :noindex:
@@ -800,20 +790,6 @@ Modern Neighborhood Component Analysis (ModernNCA)
             
             \hat{y}_i = \sum_j p_{ij} y_j
 
-   .. method:: knn_prediction(x, candidate_x, candidate_y, k)
-      :noindex:
-      
-      Make predictions using k-nearest neighbors in embedding space.
-      
-      **K-NN Process:**
-      
-      1. **Distance Calculation:** Compute distances in embedding space
-      2. **Neighbor Selection:** Find k nearest neighbors
-      3. **Prediction Aggregation:** Aggregate neighbor labels with distance weighting
-
-Specialized Architectures
-=========================
-
 ExcelFormer (Semi-Permeable Attention)
 --------------------------------------
 
@@ -827,7 +803,7 @@ ExcelFormer (Semi-Permeable Attention)
 
    Transformer with semi-permeable attention and mixup training capabilities.
 
-   .. method:: __init__(d_numerical, d_token, n_blocks, attention_dropout, ffn_dropout, residual_dropout, d_out)
+   .. method:: __init__(*, d_numerical, token_bias, n_layers, d_token, n_heads, attention_dropout, ffn_dropout, residual_dropout, prenormalization, kv_compression, kv_compression_sharing, d_out, init_scale=0.1)
       :noindex:
       
       Initialize ExcelFormer architecture.
@@ -836,13 +812,13 @@ ExcelFormer (Semi-Permeable Attention)
       
       * **d_numerical** (*int*) -- Number of numerical features
       * **d_token** (*int*) -- Token embedding dimension
-      * **n_blocks** (*int*) -- Number of transformer blocks
+      * **n_layers** (*int*) -- Number of transformer blocks
       * **attention_dropout** (*float*) -- Attention dropout probability
       * **ffn_dropout** (*float*) -- Feed-forward dropout probability
       * **residual_dropout** (*float*) -- Residual connection dropout
       * **d_out** (*int*) -- Output dimension
 
-   .. method:: forward(x_num, x_cat, mix_up, beta, mtype)
+   .. method:: forward(x_num, x_cat=None, mix_up=False, beta=0.5, mtype='feat_mix')
       :noindex:
       
       Forward pass with optional mixup augmentation.
@@ -853,7 +829,7 @@ ExcelFormer (Semi-Permeable Attention)
       * **x_cat** (*torch.Tensor, optional*) -- Categorical features
       * **mix_up** (*bool*) -- Whether to apply mixup
       * **beta** (*float*) -- Mixup parameter (default: 0.5)
-      * **mtype** (*str*) -- Mixup type ('feat_mix', 'hidden_mix', 'naive_mix')
+      * **mtype** (*str*) -- Mixup type ('feat_mix', 'hidden_mix', 'niave_mix')
       
       **Returns:**
       
@@ -873,17 +849,6 @@ ExcelFormer (Semi-Permeable Attention)
          
          \text{Attention}_{\text{perm}}(Q, K, V) = \text{mask} \odot \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V
 
-   .. method:: mixup_process(x, beta, mtype)
-      :noindex:
-      
-      Apply mixup augmentation to input features.
-      
-      **Mixup Types:**
-      
-      * **feat_mix:** Feature-level mixing with learnable weights
-      * **hidden_mix:** Hidden representation mixing
-      * **naive_mix:** Simple linear interpolation
-
 ProtoGate (Prototype-Based Gating)
 ----------------------------------
 
@@ -892,35 +857,7 @@ ProtoGate (Prototype-Based Gating)
    :undoc-members:
    :show-inheritance:
 
-.. class:: ProtoGate
-   :noindex:
-
-   Prototype-based model with gating mechanisms for interpretable feature selection.
-
-   .. method:: __init__(input_dim, output_dim, n_prototypes, n_components, dropout)
-      :noindex:
-      
-      Initialize ProtoGate architecture.
-      
-      **Parameters:**
-      
-      * **input_dim** (*int*) -- Input feature dimension
-      * **output_dim** (*int*) -- Output dimension
-      * **n_prototypes** (*int*) -- Number of learned prototypes
-      * **n_components** (*int*) -- Number of components per prototype
-      * **dropout** (*float*) -- Dropout probability
-
-   .. method:: forward(x)
-      :noindex:
-      
-      Forward pass with prototype-based gating.
-      
-      **Prototype-Based Processing:**
-      
-      1. **Prototype Computation:** Learn representative prototypes from data
-      2. **Distance Calculation:** Compute distances to prototypes
-      3. **Gate Generation:** Use distances to generate feature gates
-      4. **Feature Selection:** Apply gates for adaptive feature selection
+ProtoGate trains a gating network to select features for its nearest-neighbor predictor.
 
 .. class:: GatingNet
    :noindex:
@@ -936,17 +873,17 @@ ProtoGate (Prototype-Based Gating)
       
       .. math::
          
-         \text{hard_sigmoid}(x) = \max(0, \min(1, \frac{x + 1}{2}))
+         \text{hard_sigmoid}(x) = \max(0, \min(1, a x))
       
       This provides a piecewise linear approximation to the sigmoid function for computational efficiency.
 
    .. method:: forward(x)
       :noindex:
       
-      Generate gating weights for feature selection.
+      Return the selected features, the gate activations and the sampled gates.
 
 Retrieval-Based Models
-=====================
+======================
 
 TabR (Tabular Retrieval)
 ------------------------
@@ -961,7 +898,7 @@ TabR (Tabular Retrieval)
 
    KNN-attention hybrid model with retrieval-based predictions.
 
-   .. method:: __init__(n_num_features, n_cat_features, n_classes, context_size, normalization, num_embeddings, d_main, d_multiplier, encoder_n_blocks, predictor_n_blocks, mixer_normalization, dropout0, dropout1, normalization, activation)
+   .. method:: __init__(*, n_num_features, n_cat_features, n_classes, num_embeddings, d_main, d_multiplier, encoder_n_blocks, predictor_n_blocks, mixer_normalization, context_dropout, dropout0, dropout1, normalization, activation, memory_efficient=False, candidate_encoding_batch_size=None)
       :noindex:
       
       Initialize TabR architecture.
@@ -971,7 +908,7 @@ TabR (Tabular Retrieval)
       * **n_num_features** (*int*) -- Number of numerical features
       * **n_cat_features** (*int*) -- Number of categorical features  
       * **n_classes** (*int*) -- Number of output classes
-      * **context_size** (*int*) -- Maximum context size for retrieval
+      * **context_dropout** (*float*) -- Dropout on retrieved context weights
       * **normalization** (*str*) -- Normalization type
       * **num_embeddings** (*dict*) -- Embedding configurations
       * **d_main** (*int*) -- Main hidden dimension
@@ -983,7 +920,7 @@ TabR (Tabular Retrieval)
       * **dropout1** (*float*) -- Hidden dropout
       * **activation** (*str*) -- Activation function
 
-   .. method:: forward(x_num, x_cat, candidate_x_num, candidate_x_cat, candidate_y, context_size, is_train)
+   .. method:: forward(*, x_num, x_cat, y, candidate_x_num, candidate_x_cat, candidate_y, context_size, is_train)
       :noindex:
       
       Forward pass with retrieval-based attention.
@@ -996,7 +933,7 @@ TabR (Tabular Retrieval)
       4. **Prediction Generation:** Combine retrieval and learned representations
 
 Foundation Models
-================
+=================
 
 TabPFN (Tabular Prior-Fitting Networks)
 ---------------------------------------
@@ -1011,7 +948,7 @@ TabPFN (Tabular Prior-Fitting Networks)
 
    Prior-fitting network for zero-shot tabular classification.
 
-   .. method:: __init__(device, base_path)
+   .. method:: __init__(device='cpu', base_path=pathlib.Path(__file__).parent.resolve(), model_string='', N_ensemble_configurations=32, no_preprocess_mode=False, multiclass_decoder='permutation', feature_shift_decoder=True, only_inference=True, seed=0, no_grad=True, batch_size_inference=8, subsample_features=False)
       :noindex:
       
       Initialize TabPFN with pre-trained weights.
@@ -1023,7 +960,7 @@ TabPFN (Tabular Prior-Fitting Networks)
       * Immediate deployment capability
       * Context-based learning from examples
 
-   .. method:: fit(X, y)
+   .. method:: fit(X, y, overwrite_warning=False)
       :noindex:
       
       Fit the model using in-context learning (no parameter updates).
@@ -1034,7 +971,7 @@ TabPFN (Tabular Prior-Fitting Networks)
       2. **No Weight Updates:** Model weights remain frozen
       3. **Context Encoding:** Encode training data for reference
 
-   .. method:: predict_proba(X)
+   .. method:: predict_proba(X, normalize_with_test=False, return_logits=False)
       :noindex:
       
       Make predictions using in-context learning.
@@ -1046,10 +983,10 @@ TabPFN (Tabular Prior-Fitting Networks)
       3. **Prediction Generation:** Generate predictions without fine-tuning
 
 Regularization Methods
-=====================
+======================
 
 TANGOS Regularization
---------------------
+---------------------
 
 .. automodule:: TALENT.model.models.tangos
    :members:
@@ -1069,7 +1006,7 @@ TANGOS Regularization
       
       \mathcal{L}_{\text{TANGOS}} = \mathcal{L}_{\text{task}} + \lambda_1 \mathcal{L}_{\text{spatial}} + \lambda_2 \mathcal{L}_{\text{spectral}}
 
-   .. method:: __init__(d_in, d_out, d_layers, dropout, lambda1, lambda2)
+   .. method:: __init__(*, d_in, d_out, d_layers, dropout, lambda1, lambda2, subsample=50)
       :noindex:
       
       Initialize TANGOS-regularized MLP.
@@ -1083,7 +1020,7 @@ TANGOS Regularization
       * **lambda1** (*float*) -- Spatial regularization weight
       * **lambda2** (*float*) -- Spectral regularization weight
 
-   .. method:: forward(x, x_cat=None)
+   .. method:: forward(x, x_cat)
       :noindex:
       
       Forward pass with standard MLP architecture.
@@ -1162,12 +1099,13 @@ Activation Functions Reference
 where :math:`\Delta^{K-1}` is the probability simplex.
 
 Model Usage Examples
-===================
+====================
 
 **Basic MLP Usage:**
 
 .. code-block:: python
    
+   import torch
    from TALENT.model.models.mlp import MLP
    
    # Initialize MLP
@@ -1210,6 +1148,10 @@ Model Usage Examples
    # Initialize FT-Transformer
    model = Transformer(
        d_numerical=8,          # 8 numerical features
+       token_bias=True,
+       initialization="kaiming",
+       kv_compression=None,
+       kv_compression_sharing=None,
        categories=[5, 10, 3],  # 3 categorical features with cardinalities
        d_token=64,             # Token dimension
        n_layers=3,             # Number of transformer layers
@@ -1240,13 +1182,13 @@ Model Usage Examples
    )
    
    # Training
-   model.fit(X_train, y_train, 
-             eval_set=[(X_val, y_val)],
-             max_epochs=100)
+   model.fit(X_train, y_train, device="cpu", task="binclass",
+             eval_set=[(X_val, y_val)], eval_name=["valid"],
+             eval_metric=["accuracy"], max_epochs=100, drop_last=False)
    
    # Get predictions and explanations
    predictions = model.predict_proba(X_test)
-   explanations = model.explain(X_test, normalize=True)
+   explanations, masks = model.explain(X_test, normalize=True)
 
 **GRANDE for Tree-like Neural Networks:**
 
@@ -1257,7 +1199,7 @@ Model Usage Examples
    # Initialize GRANDE
    model = GRANDE(
        batch_size=64,
-       task_type='classification',
+       task_type='binclass',
        depth=4,              # Tree depth
        n_estimators=10,      # Number of trees
        dropout=0.1
@@ -1273,12 +1215,17 @@ Model Usage Examples
    model = ModernNCA(
        d_in=15,
        d_out=4,              # 4 classes
-       k=32,                 # Number of neighbors
+       d_num=15,
+       d_block=64,
+       n_blocks=1,
+       num_embeddings=None,
        dropout=0.1,
-       d_embedding=64        # Embedding dimension
+       dim=64                # Embedding dimension
    )
    
-   # Training requires candidate examples
+   import torch
+   x, candidate_x = torch.randn(4, 15), torch.randn(32, 15)
+   y, candidate_y = torch.arange(4), torch.arange(32) % 4
    output = model(x, y, candidate_x, candidate_y, is_train=True)
 
 **ExcelFormer with Mixup Training:**
@@ -1291,13 +1238,20 @@ Model Usage Examples
    model = ExcelFormer(
        d_numerical=10,
        d_token=64,
-       n_blocks=3,
+       token_bias=True,
+       n_layers=3,
+       n_heads=8,
+       prenormalization=True,
+       kv_compression=None,
+       kv_compression_sharing=None,
+       residual_dropout=0.0,
        attention_dropout=0.1,
        ffn_dropout=0.1,
        d_out=3
    )
    
-   # Forward pass with feature mixup
+   import torch
+   x_num = torch.randn(8, 10)
    output, masks, shuffled_ids = model(
        x_num, 
        mix_up=True, 
@@ -1321,7 +1275,7 @@ Model Usage Examples
    predictions = model.predict_proba(X_test)
 
 Model Selection Guidelines
-=========================
+==========================
 
 **For Beginners:**
 - **MLP:** Simple, fast, good baseline

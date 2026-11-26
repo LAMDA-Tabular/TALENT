@@ -1,14 +1,14 @@
 {
     "tabautopnpnet": {
         "model": {
-            "num_fourier_features": [10, 25, 50, 75, 100],
-            "max_poly_terms": [2, 3, 5, 7, 10],
-            "poly_type": ["chebyshev", "legendre", "hermite", "laguerre"],
-            "hidden_size": [64, 128, 256, 512],
-            "use_residual": [false, true]
+            "num_fourier_features": ["categorical", [10, 25, 50, 75, 100]],
+            "max_poly_terms": ["categorical", [2, 3, 5, 7, 10]],
+            "poly_type": ["categorical", ["chebyshev", "legendre", "hermite", "laguerre"]],
+            "hidden_size": ["categorical", [64, 128, 256, 512]],
+            "use_residual": ["categorical", [false, true]]
         },
         "training": {
-            "lr": [0.0005, 0.005, 0.05],
+            "lr": ["categorical", [0.0005, 0.005, 0.05]],
             "weight_decay": [
                 "?loguniform",
                 0.0,

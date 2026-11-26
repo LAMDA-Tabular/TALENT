@@ -98,12 +98,10 @@ def dataname_to_numpy(dataset_name, dataset_path):
     )
 
 def get_dataset(dataset_name, dataset_path):
-    """
-    Load the dataset from the numpy files.
+    """Return (train_val_data, test_data, info) for a TALENT-format dataset.
 
-    :param dataset_name: str
-    :param dataset_path: str
-    :return: Tuple[ArrayDict, ArrayDict, ArrayDict, Dict[str, Any]]
+    Each data tuple contains numerical features, categorical features and
+    labels keyed by split. An absent feature type is represented by None.
     """
     N, C, y, info = dataname_to_numpy(dataset_name, dataset_path)
     N_trainval = None if N is None else {key: N[key] for key in ["train", "val"]} if "train" in N and "val" in N else None
@@ -179,17 +177,20 @@ def data_nan_process(N_data, C_data, num_nan_policy, cat_nan_policy, num_new_val
             if cat_new_value is None:
                 cat_new_value = '___null___'
                 imputer = None
-            if any(x.any() for x in cat_nan_masks.values()):
-                for k, v in C.items():
-                    cat_nan_indices = np.where(cat_nan_masks[k])
-                    v[cat_nan_indices] = cat_new_value
+            for k, mask in cat_nan_masks.items():
+                if mask.any():
+                    # Fixed-width strings otherwise truncate the same missing token
+                    # differently in the training, validation and test splits.
+                    dtype = np.result_type(C[k].dtype, np.asarray(cat_new_value).dtype)
+                    C[k] = C[k].astype(dtype, copy=False)
+                    C[k][mask] = cat_new_value
         elif cat_nan_policy == 'most_frequent':
             cat_new_value = None
             C_for_imputer = {k: v.astype(object) for k, v in C.items()}
             for k, v in C_for_imputer.items():
                 v[cat_nan_masks[k]] = np.nan
             if imputer is None:
-                imputer = SimpleImputer(strategy='most_frequent') 
+                imputer = SimpleImputer(strategy='most_frequent', keep_empty_features=True)
                 imputer.fit(C_for_imputer['train'])
             C = {k: imputer.transform(v) for k, v in C_for_imputer.items()}
         else:
@@ -350,19 +351,19 @@ def data_enc_process(N_data, C_data, cat_policy, y_train = None, ord_encoder = N
                 cat_encoder = category_encoders.HashingEncoder()
                 cat_encoder.fit(C_data['train'].astype(str))
             C_data = {k: cat_encoder.transform(v.astype(str)).values for k, v in C_data.items()}
-        elif cat_policy == 'loo':
+        elif cat_policy in ('loo', 'catboost'):
             if cat_encoder is None:
-                cat_encoder = category_encoders.LeaveOneOutEncoder()
+                encoder_cls = (category_encoders.LeaveOneOutEncoder if cat_policy == 'loo'
+                               else category_encoders.CatBoostEncoder)
+                cat_encoder = encoder_cls()
                 cat_encoder.fit(C_data['train'].astype(str), y_train)
-            C_data = {k: cat_encoder.transform(v.astype(str)).values for k, v in C_data.items()}
+            # Training rows use leave-one-out or ordered statistics. Held-out
+            # rows use the category statistics fitted on the full training set.
+            C_data = {k: cat_encoder.transform(v.astype(str), y_train if k == 'train' else None).values
+                      for k, v in C_data.items()}
         elif cat_policy == 'target':
             if cat_encoder is None:
                 cat_encoder = category_encoders.TargetEncoder()
-                cat_encoder.fit(C_data['train'].astype(str), y_train)
-            C_data = {k: cat_encoder.transform(v.astype(str)).values for k, v in C_data.items()}
-        elif cat_policy == 'catboost':
-            if cat_encoder is None:
-                cat_encoder = category_encoders.CatBoostEncoder()
                 cat_encoder.fit(C_data['train'].astype(str), y_train)
             C_data = {k: cat_encoder.transform(v.astype(str)).values for k, v in C_data.items()}
         elif cat_policy == 'tabr_ohe':

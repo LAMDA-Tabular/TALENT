@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import torch
 import numpy as np
 import os.path as osp
@@ -44,13 +46,14 @@ def run_one_epoch(model, data_loader, loss_func, model_type, config, regularize,
                 if loss_func == F.cross_entropy:
                     label_similarity = (y.reshape(-1,1)[selected_rows] == y.reshape(-1,1)[selected_rows].T).float()
                 else:
-                    y_min = min(y)
-                    y_max = max(y)
+                    y_min = y.min()
+                    y_max = y.max()
                     # using Sturges equation select bins in manuscripts
                     num_bin = 1 + int(np.log2(y.shape[0]))
                     # num_bin = 5
                     interval_width = (y_max - y_min) / num_bin
-                    y_assign = torch.max(torch.tensor(0).cuda(),torch.min(((y.reshape(-1,1)-y_min)/interval_width).long(),torch.tensor(num_bin-1).cuda()))
+                    width = torch.where(interval_width > 0, interval_width, 1.0)
+                    y_assign = ((y.reshape(-1, 1) - y_min) / width).long().clamp(0, num_bin - 1)
                     label_similarity = (y_assign.reshape(-1,1)[selected_rows] == y_assign.reshape(-1,1)[selected_rows].T).float()
                 
                 positive_mask = label_similarity
@@ -92,6 +95,8 @@ def run_one_epoch(model, data_loader, loss_func, model_type, config, regularize,
 
 
 def run_one_epoch_val(model, data_loader, loss_func, model_type, config, is_regression):
+    from sklearn.metrics import accuracy_score, mean_squared_error
+
     pred = []
     ground = []
     for bid, (X, y) in enumerate(data_loader):
@@ -109,32 +114,25 @@ def run_one_epoch_val(model, data_loader, loss_func, model_type, config, is_regr
     pred = np.concatenate(pred, axis=0)
     y = torch.cat(ground, dim=0)
     
-    y = y.data.cpu().numpy()
-    try:
-        import sklearn
-        if not is_regression:
-            pred = pred.argmax(1)
-            score = sklearn.metrics.accuracy_score(y.reshape(-1,1), pred.reshape(-1,1))
-            return score
-        else:
-            score = sklearn.metrics.mean_squared_error(y.reshape(-1,1), pred.reshape(-1,1)) ** 0.5 
-            return score
-    except:
-        return 1000000
+    y = y.detach().cpu().numpy().reshape(-1)
+    if not np.isfinite(pred).all():
+        raise ValueError("PTaRL produced non-finite validation predictions")
+    if is_regression:
+        return mean_squared_error(y, pred.reshape(-1)) ** 0.5
+    return accuracy_score(y, pred.argmax(axis=1))
 
 
 
 def fit_Ptarl(args,model, train_loader, val_loader, loss_func, model_type, config, regularize, is_regression,  ot_weight, diversity_weight, r_weight, diversity,seed,save_path):
-    if is_regression:
-        best_val_loss = 1e30
-    else:
-        best_val_loss = 0
+    best_val_loss = np.inf if is_regression else -np.inf
     best_model = None
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=config['training']['lr'], weight_decay=config['training']['weight_decay'])
 
     early_stop = 20
     epochs = args.max_epoch
+    if epochs < 1:
+        raise ValueError("PTaRL requires at least one training epoch")
 
     patience = early_stop
 
@@ -150,37 +148,25 @@ def fit_Ptarl(args,model, train_loader, val_loader, loss_func, model_type, confi
         )
 
         print(f'Epoch {eid}, train loss {train_loss}, val loss {val_loss}')
-        if is_regression:
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                import copy
-                best_model = copy.deepcopy(model)
-                if "_ot" in model_type:
-                    torch.save(
-                        dict(params=best_model.state_dict()),
-                        osp.join(save_path, 'best-val-{}.pth'.format(str(seed)))
-                    )
-                patience = early_stop
-            else:
-                patience = patience - 1
+        if not np.isfinite(val_loss):
+            raise ValueError("PTaRL produced a non-finite validation score")
+        improved = val_loss < best_val_loss if is_regression else val_loss > best_val_loss
+        if improved:
+            best_val_loss = val_loss
+            best_model = deepcopy(model)
+            if "_ot" in model_type:
+                torch.save(
+                    dict(params=best_model.state_dict()),
+                    osp.join(save_path, 'best-val-{}.pth'.format(str(seed)))
+                )
+            patience = early_stop
         else:
-            if val_loss > best_val_loss:
-                best_val_loss = val_loss
-                import copy
-                best_model = copy.deepcopy(model)
-                if "_ot" in model_type:
-                    torch.save(
-                        dict(params=best_model.state_dict()),
-                        osp.join(save_path, 'best-val-{}.pth'.format(str(seed)))
-                    )
-                patience = early_stop
-            else:
-                patience = patience - 1
+            patience -= 1
         if patience == 0:
             break
     if "_ot" in model_type:
         torch.save(
-            dict(params=best_model.state_dict()),
+            dict(params=model.state_dict()),
             osp.join(save_path, 'epoch-last-{}.pth'.format(str(seed)))
         )
     return best_model,best_val_loss

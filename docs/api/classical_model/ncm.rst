@@ -51,7 +51,7 @@ This section contains the Nearest Centroid Method (NCM) implementation for class
       **Model Creation:**
       
       - Creates `NearestCentroid` classifier
-      - Configures parameters like metric, shrink_threshold, etc.
+      - Uses the default Euclidean metric.
 
    .. method:: fit(data, info, train=True, config=None)
       :noindex:
@@ -88,18 +88,18 @@ This section contains the Nearest Centroid Method (NCM) implementation for class
       
       **Returns:**
       
-      * **test_logit** (*array-like*) -- Test predictions (class labels for classification)
+      A tuple ``(metric_values, metric_names, predictions)``. The predictions contain class probabilities.
       
       **Prediction Process:**
       
       1. **Data Preprocessing:** Applies same preprocessing as training data
       2. **Model Loading:** Loads the trained NCM model
       3. **Prediction:** Finds closest centroid for each sample
-      4. **Output:** Returns predicted class labels
+      4. **Output:** Returns class probabilities computed from negative centroid distances
 
 **Evaluation Metrics:**
 
-- **For classification:** returns Accuracy, Avg_Precision, Avg_Recall, F1 metrics
+- **For classification:** returns Accuracy, Avg_Recall, Avg_Precision, F1, LogLoss, AUC, Brier and ECE
 
 **References:**
 

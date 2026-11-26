@@ -11,7 +11,7 @@ This section contains the Linear Regression implementation for regression tasks.
    :undoc-members:
    :show-inheritance:
 
-.. class:: LRMethod
+.. class:: LinearRegressionMethod
    :noindex:
 
    Linear Regression method for regression tasks.
@@ -51,7 +51,7 @@ This section contains the Linear Regression implementation for regression tasks.
       **Model Creation:**
       
       - Creates `LinearRegression` regressor
-      - Configures parameters like fit_intercept, normalize, etc.
+      - Configures parameters such as fit_intercept.
 
    .. method:: fit(data, info, train=True, config=None)
       :noindex:
@@ -88,7 +88,7 @@ This section contains the Linear Regression implementation for regression tasks.
       
       **Returns:**
       
-      * **test_logit** (*array-like*) -- Test predictions (continuous values for regression)
+      A tuple ``(metric_values, metric_names, predictions)``. The predictions contain values in the original target units.
       
       **Prediction Process:**
       

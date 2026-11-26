@@ -1,6 +1,10 @@
+#!/usr/bin/env bash
+cd "$(dirname "$0")/.." || exit 1
+mkdir -p log || exit 1
+
 # for regression
 datasets_reg=(
-    cpu_small
+    cpu_act
 )
 models=(
     danets
@@ -20,7 +24,6 @@ indices_models=(
     ptarl
     saint
     snn
-    tabr
     tabtransformer
 )
 
@@ -30,12 +33,12 @@ modernNCA
 )
 for dataset in "${datasets_reg[@]}"; do
     for model in "${models[@]}"; do
-        python ./train_model_deep.py --dataset $dataset --dataset_path example_datasets --max_epoch 5 --seed_num 1 --model_type $model --gpu 0 > "./log/${dataset}-${model}.txt"
+        python test/train_model_deep.py --dataset $dataset --dataset_path example_datasets --max_epoch 5 --seed_num 1 --model_type $model --gpu 0 > "./log/${dataset}-${model}.txt"
     done
     for model in "${indices_models[@]}"; do
-        python ./train_model_deep.py --dataset $dataset --dataset_path example_datasets --max_epoch 5 --seed_num 1 --model_type $model --gpu 0 --cat_policy indices > "./log/${dataset}-${model}.txt"
+        python test/train_model_deep.py --dataset $dataset --dataset_path example_datasets --max_epoch 5 --seed_num 1 --model_type $model --gpu 0 --cat_policy indices > "./log/${dataset}-${model}.txt"
     done
     for model in "${tabr_ohe_models[@]}"; do
-        python ./train_model_deep.py --dataset $dataset --dataset_path example_datasets --max_epoch 5 --seed_num 1 --model_type $model --gpu 0 --cat_policy tabr_ohe  > "./log/${dataset}-${model}.txt"
+        python test/train_model_deep.py --dataset $dataset --dataset_path example_datasets --max_epoch 5 --seed_num 1 --model_type $model --gpu 0 --cat_policy tabr_ohe  > "./log/${dataset}-${model}.txt"
     done
 done

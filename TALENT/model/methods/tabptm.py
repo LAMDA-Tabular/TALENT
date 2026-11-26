@@ -63,10 +63,9 @@ class TabPTMMethod(Method):
                 self.y = {k: v.double() for k, v in Y.items()}
             else:
                 self.y = {k: v.long() for k, v in Y.items()}
-            if torch.cuda.is_available():
-                self.centers = [torch.from_numpy(c.astype(np.float64)).cuda() for c in self.centers]    
-            else:
-                self.centers = [torch.from_numpy(c.astype(np.float64)) for c in self.centers]
+            self.centers = [
+                torch.as_tensor(c, dtype=torch.float64, device=self.args.device) for c in self.centers
+            ]
             trainset = TabPTMData(self.D, self.N, self.y, self.y_info, 'train')
             valset = TabPTMData(self.D, self.N, self.y, self.y_info, 'val')
             self.train_loader = DataLoader(dataset=trainset, batch_size=self.args.batch_size, shuffle=True, num_workers=0)        
@@ -81,11 +80,9 @@ class TabPTMMethod(Method):
             X = {k: v.to(self.args.device) for k, v in to_tensors(N_test).items()}
             Y = {k: v.to(self.args.device) for k, v in to_tensors(y_test).items()}
             self.N_test = {k: v.double() for k, v in X.items()}
-            if self.is_regression:
-                self.y_test = {k: v.double() for k, v in Y.items()}
-            else:
-                self.y_test = {k: v.long() for k, v in Y.items()}
-            testset = TabPTMData(self.D, self.N_test, self.y_test, self.y_info, 'test')
+            Y = {k: v.double() if self.is_regression else v.long() for k, v in Y.items()}
+            testset = TabPTMData(self.D, self.N_test, Y, self.y_info, 'test')
+            self.y_test = Y['test']
             self.test_loader = DataLoader(dataset=testset, batch_size=2048, shuffle=False, num_workers=0)
 
     def construct_model(self, model_config = None):
@@ -115,7 +112,7 @@ class TabPTMMethod(Method):
                 "checkpoint is not publicly available. If you have it (e.g. from the "
                 f"TabPTM authors), place it at TALENT/{rel}."
             )
-        self.model.load_state_dict(torch.load(ckpt_path)['params'])
+        self.model.load_state_dict(torch.load(ckpt_path, map_location=self.args.device)['params'])
         if self.args.use_float:
             self.model.float()
         else:
@@ -155,7 +152,8 @@ class TabPTMMethod(Method):
     
     def predict(self, data, info, model_name):
         N, C, y = data
-        self.model.load_state_dict(torch.load(osp.join(self.args.save_path, model_name + '-{}.pth'.format(str(self.args.seed))))['params'])
+        checkpoint = osp.join(self.args.save_path, model_name + '-{}.pth'.format(str(self.args.seed)))
+        self.model.load_state_dict(torch.load(checkpoint, map_location=self.args.device)['params'])
         print('best epoch {}, best val res={:.4f}'.format(self.trlog['best_epoch'], self.trlog['best_res']))
         ## Evaluation Stage
         self.model.eval()
@@ -179,7 +177,7 @@ class TabPTMMethod(Method):
         test_label = torch.cat(test_label, 0)
         
         vl = self.criterion(test_logit, test_label).item()
-        vres, metric_name = self.metric(test_logit, test_label, self.y_info)
+        vres, metric_name = self._native_metric(test_logit, test_label, self.y_info)
 
         # Denormalize regression predictions back to original scale
         if self.is_regression and self.y_info.get('policy') == 'mean_std':
@@ -238,19 +236,19 @@ class TabPTMMethod(Method):
             elif distance_type == 'can':
                 distance_pos_c = self.canberra_dist(X, centers_c, self.mi)
 
-            if is_training:           
-                topk_pos = torch.topk(distance_pos_c, min(numK+1, centers_c.shape[0]), largest=False)[0]
-                topk_pos_labels = labels_c[torch.topk(distance_pos_c, min(numK + 1, centers_c.shape[0]), largest=False)[1]]
-                zero_mask = (topk_pos[:, 0] < 1e-6)
-                if zero_mask.any():
-                    topk_pos = torch.where(zero_mask[:, None].expand_as(topk_pos[:, 1:]), topk_pos[:, 1:1+numK], topk_pos[:, :numK])
-                    topk_pos_labels = torch.where(zero_mask[:, None].expand_as(topk_pos_labels[:, 1:]), topk_pos_labels[:, 1:1+numK], topk_pos_labels[:, :numK])
-                else:
-                    topk_pos = topk_pos[:, :numK]
-                    topk_pos_labels = topk_pos_labels[:, :numK]
-            else:
-                topk_pos = torch.topk(distance_pos_c, min(numK, centers_c.shape[0]), largest=False)[0]    
-                topk_pos_labels = labels_c[torch.topk(distance_pos_c, min(numK, centers_c.shape[0]), largest=False)[1]]
+            count = min(numK + int(is_training), centers_c.shape[0])
+            topk_pos, indices = torch.topk(distance_pos_c, count, largest=False)
+            if is_training:
+                if count < 2:
+                    raise ValueError("TabPTM regression training requires at least two centres")
+                # Exclude one matching centre for training queries. Repeat the last
+                # available neighbour when excluding the match leaves too few.
+                skip = (topk_pos[:, :1] < 1e-6).long()
+                positions = torch.arange(min(numK, count), device=X.device) + skip
+                positions = positions.clamp_max(count - 1)
+                topk_pos = topk_pos.gather(1, positions)
+                indices = indices.gather(1, positions)
+            topk_pos_labels = labels_c[indices]
 
             if topk_pos.shape[1] < numK:
                 num_diff = numK - topk_pos.shape[1]
@@ -365,10 +363,10 @@ class TabPTMMethod(Method):
             if self.is_regression:
                 X_meta = self.get_meta_feature_regression(X, y, is_training=True)
                 pred = self.model(X_meta)
-                loss = self.criterion(pred, y.to(torch.float64).squeeze())
+                loss = self.criterion(pred, y.to(pred.dtype).reshape_as(pred))
             else:
                 X_meta = self.get_meta_feature_allclass(X, y, is_training=True)
-                pred = self.model(X_meta, X)
+                pred = self.model(X_meta)
                 loss = self.criterion(pred, y)
 
             # X: batch x num_class x 3 x numK
@@ -402,8 +400,8 @@ class TabPTMMethod(Method):
                     test_logit.append(pred)
                     test_label.append(y.to(torch.float64))
                 else:
-                    X_meta = self.get_meta_feature_allclass(X, y, is_training=True)
-                    pred = self.model(X_meta, X)
+                    X_meta = self.get_meta_feature_allclass(X)
+                    pred = self.model(X_meta)
                     test_logit.append(pred)
                     test_label.append(y)
                 
@@ -419,7 +417,7 @@ class TabPTMMethod(Method):
             task_type = 'classification'
             measure = np.greater_equal
 
-        vres, metric_name = self.metric(test_logit, test_label, self.y_info)
+        vres, metric_name = self._native_metric(test_logit, test_label, self.y_info)
             
         print('epoch {}, val, loss={:.4f} {} result={:.4f}'.format(epoch, vl, task_type, vres[0]))
         from TALENT.model.lib.tuning_metric import select_objective

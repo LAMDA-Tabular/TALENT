@@ -1,7 +1,7 @@
 **PFN v2**
 ==========
 
-PFN v2 (Prior-Free Neural Networks) provides TabPFN classifier and regressor implementations for tabular data.
+TabPFN v2 provides TabPFN classifier and regressor implementations for tabular data.
 
 
 Functions

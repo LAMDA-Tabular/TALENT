@@ -148,7 +148,7 @@ class TabR(nn.Module):
     def forward(
         self,
         *,
-        x_num: Tensor, 
+        x_num: ty.Optional[Tensor],
         x_cat: ty.Optional[Tensor],
         y: Optional[Tensor],
         candidate_x_num: ty.Optional[Tensor],
@@ -177,18 +177,17 @@ class TabR(nn.Module):
             # When memory_efficient is True, this potentially heavy computation is
             # performed without gradients.
             # Later, it is recomputed with gradients only for the context objects.
-            candidate_k = (
-                self._encode(candidate_x_num,candidate_x_cat)[1]
-                if self.candidate_encoding_batch_size is None
-                else torch.cat(
-                    [
-                        self._encode(x_num_,x_cat_)[1]
-                        for x_num_,x_cat_ in delu.iter_batches(
-                            (candidate_x_num,candidate_x_cat), self.candidate_encoding_batch_size
-                        )
-                    ]
-                )
-            )
+            chunk_size = self.candidate_encoding_batch_size
+            if chunk_size is None or len(candidate_y) == 0:
+                candidate_k = self._encode(candidate_x_num, candidate_x_cat)[1]
+            else:
+                chunks = []
+                for start in range(0, len(candidate_y), chunk_size):
+                    rows = slice(start, start + chunk_size)
+                    x_num_chunk = None if candidate_x_num is None else candidate_x_num[rows]
+                    x_cat_chunk = None if candidate_x_cat is None else candidate_x_cat[rows]
+                    chunks.append(self._encode(x_num_chunk, x_cat_chunk)[1])
+                candidate_k = torch.cat(chunks)
         x, k = self._encode(x_num,x_cat)
         if is_train:
             # NOTE: here, we add the training batch back to the candidates after the
@@ -208,6 +207,10 @@ class TabR(nn.Module):
         # For smaller datasets, however, the naive solution can actually be faster.
         batch_size, d_main = k.shape
         device = k.device
+        # FAISS pads an oversized query with -1, which would index the last row.
+        context_size = min(context_size, len(candidate_k) - int(is_train))
+        if context_size < 1:
+            raise ValueError("TabR requires at least one eligible context neighbour per query")
         with torch.no_grad():
             if self.search_index is None:
                 self.search_index = (
@@ -239,14 +242,10 @@ class TabR(nn.Module):
             assert is_train
             # Repeating the same computation,
             # but now only for the context objects and with autograd on.
-            context_k = self._encode(
-                torch.cat([x_num, candidate_x_num])[
-                        context_idx
-                    ].flatten(0, 1),
-                torch.cat([x_cat, candidate_x_cat])[
-                        context_idx
-                    ].flatten(0, 1)
-            )[1].reshape(batch_size, context_size, -1)
+            rows = context_idx.reshape(-1)
+            context_num = None if x_num is None else torch.cat((x_num, candidate_x_num))[rows]
+            context_cat = None if x_cat is None else torch.cat((x_cat, candidate_x_cat))[rows]
+            context_k = self._encode(context_num, context_cat)[1].reshape(batch_size, context_size, -1)
         else:
             context_k = candidate_k[context_idx]
             # print(context_k.shape)

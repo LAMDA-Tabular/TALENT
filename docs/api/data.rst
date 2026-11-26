@@ -192,7 +192,7 @@ Data Preprocessing
    **Categorical NaN Policies:**
    
    * **new**: Replace NaN with special token '___null___'
-   * **most_frequent**: Replace NaN with most frequent value using SimpleImputer
+   * **most_frequent**: Use the training mode. An entirely missing training column is retained with the imputer's constant fallback.
 
 .. function:: num_enc_process(N_data, num_policy, n_bins=2, y_train=None, is_regression=False, encoder=None)
    :noindex:
@@ -257,9 +257,9 @@ Data Preprocessing
    * **ohe**: One-hot encoding
    * **binary**: Binary encoding
    * **hash**: Hashing encoding
-   * **loo**: Leave-one-out encoding
+   * **loo**: Exclude the training row's own target from its category mean. Use the fitted category mean for validation and test rows.
    * **target**: Target encoding
-   * **catboost**: CatBoost encoding
+   * **catboost**: Encode training rows in input order using earlier targets for the same category and the training prior. Use the fitted category statistics for validation and test rows.
    * **tabr_ohe**: Special one-hot encoding for TabR model
 
 .. function:: data_norm_process(N_data, normalization, seed, normalizer=None)
