@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from TALENT.benchmark.measurement import timed_call
+from TALENT.model.lib.query_batches import query_batch_size
 from TALENT.model.methods.foundation_base import SklearnFoundationMethod
 
 
@@ -28,9 +29,12 @@ class SeldonMethod(SklearnFoundationMethod):
         estimator = SeldonRegressor if self.is_regression else SeldonClassifier
         options = {"device": str(self.args.device), "random_state": self.args.seed}
         # Omitted options retain the publisher's task- and size-specific recipe.
-        for key in ("n_estimators", "revision", "amp", "max_context_size", "query_chunk_size"):
+        for key in ("n_estimators", "revision", "amp", "max_context_size"):
             if key in general:
                 options[key] = general[key]
+        chunk = query_batch_size(general, general.get("query_chunk_size"))
+        if chunk is not None:
+            options["query_chunk_size"] = chunk
         self.model = timed_call("load_seconds", estimator.from_pretrained, checkpoint, **options)
         task = "regressor" if self.is_regression else "classifier"
         self.resolved_checkpoint = (

@@ -16,7 +16,7 @@ Schema:
     num_policy      : str | None -- forced num_policy or None
     supports_hpo    : bool
     supports_regression / supports_classification : bool
-    train_row_limit : int | None -- soft cap on training-set size (e.g.
+    train_row_limit : int | None -- maximum number of training-context rows (e.g.
                       foundation models with limited context). The runner
                       and HPO loops respect this when sampling.
     weights         : str | None -- where a pre-trained model's weights come

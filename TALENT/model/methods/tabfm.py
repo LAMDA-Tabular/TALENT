@@ -8,10 +8,7 @@ Setup:
     pip install -U "tabfm[pytorch]"
 """
 
-import gc
 import inspect
-import logging
-from numbers import Integral
 import time
 
 import numpy as np
@@ -24,6 +21,7 @@ from TALENT.model.lib.data import (
     data_label_process,
     data_nan_process,
 )
+from TALENT.model.lib.query_batches import predict_in_batches, query_batch_size
 from TALENT.model.method_registry import weights_download_hint
 from TALENT.model.methods.base import Method
 from TALENT.model.utils import probability_nll
@@ -86,25 +84,6 @@ class TabFMMethod(Method):
             else:
                 df[col] = df[col].astype("category")
         return df
-
-    def _subsample_frame(self, X, y):
-        sample_size = self.resolve_sample_size()
-        if sample_size is None or len(X) <= sample_size:
-            return X, y
-        if not self.is_regression:
-            from sklearn.model_selection import train_test_split
-
-            X_sample, _, y_sample, _ = train_test_split(
-                X,
-                y,
-                train_size=sample_size,
-                stratify=y,
-                random_state=self.args.seed,
-            )
-            return X_sample.reset_index(drop=True), y_sample
-        rng = np.random.RandomState(self.args.seed)
-        idx = rng.choice(len(X), size=sample_size, replace=False)
-        return X.iloc[idx].reset_index(drop=True), y[idx]
 
     def _load_tabfm_model(self):
         general = self.args.config.get("general", {}) or {}
@@ -185,7 +164,7 @@ class TabFMMethod(Method):
             self.model = target_cls(**wrapper_kwargs)
 
     def fit(self, data, info, train=True, config=None):
-        N, C, y = data
+        N, C, y = self.limit_training_context(data)
         self.D = Dataset(N, C, y, info)
         self.N, self.C, self.y = self.D.N, self.D.C, self.D.y
         self.is_binclass, self.is_multiclass, self.is_regression = (
@@ -206,7 +185,6 @@ class TabFMMethod(Method):
             None if self.C is None else self.C["train"],
         )
         y_train = self.y["train"]
-        X_train, y_train = self._subsample_frame(X_train, y_train)
         self.sampled_X = X_train
         self.sampled_Y = y_train
         with weights_download_hint(getattr(self.args, "model_type", "tabfm")):
@@ -217,39 +195,14 @@ class TabFMMethod(Method):
 
     def _predict_rows(self, frame):
         predict = self.model.predict if self.is_regression else self.model.predict_proba
-        size = (self.args.config.get("general") or {}).get("predict_chunk_size")
-        if size is not None and (isinstance(size, bool) or not isinstance(size, Integral) or size < 0):
-            raise ValueError("predict_chunk_size must be a nonnegative integer or None")
         count = len(frame)
-        if not count:
-            return predict(frame)
-        size = min(size or count, count)
-        start = 0
-        parts = []
-        while start < count:
-            stop = min(start + size, count)
-            block = frame if stop - start == count else frame.iloc[start:stop].reset_index(drop=True)
-            try:
-                prediction = predict(block)
-            except RuntimeError as error:
-                cuda_oom = isinstance(error, torch.cuda.OutOfMemoryError) or (
-                    "cuda" in str(error).lower() and "out of memory" in str(error).lower()
-                )
-                if torch.device(self.args.device).type != "cuda" or not cuda_oom or stop - start <= 1:
-                    raise
-            else:
-                if stop - start == count:
-                    return prediction
-                parts.append(np.asarray(prediction))
-                start = stop
-                continue
+        size = query_batch_size(self.args.config.get("general") or {})
 
-            # Release the failed call's traceback before retrying the same rows.
-            size = (stop - start) // 2
-            gc.collect()
-            torch.cuda.empty_cache()
-            logging.getLogger(__name__).warning("TabFM CUDA memory exhausted; retrying with %d query rows", size)
-        return np.concatenate(parts, axis=0)
+        def score(start, stop):
+            block = frame if stop - start == count else frame.iloc[start:stop].reset_index(drop=True)
+            return predict(block)
+
+        return predict_in_batches(score, count, size, retry_cuda_oom=torch.device(self.args.device).type == "cuda")
 
     def predict(self, data, info, model_name):
         N, C, y = data

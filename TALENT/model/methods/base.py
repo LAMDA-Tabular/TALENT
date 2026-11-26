@@ -3,6 +3,7 @@ import torch
 import numpy as np
 import time
 import os.path as osp
+from numbers import Integral, Real
 from tqdm import tqdm
 import sklearn.metrics as skm
 from sklearn.preprocessing import label_binarize
@@ -79,24 +80,34 @@ class Method(object, metaclass=abc.ABCMeta):
             self.trlog['best_res'] = 0
 
 
-    def resolve_sample_size(self):
+    def resolve_sample_size(self, n_rows):
         """
         Resolve the effective training-row cap for this method.
 
-        An explicit ``config['general']['sample_size']`` takes precedence as a
-        per-run override; otherwise the method's ``train_row_limit`` from the
-        method registry applies (the single source of truth for row limits).
-        Returns None when neither is set (no cap).
+        The registry sets the maximum. A per-run ``sample_size`` may lower it
+        using a positive row count or a fraction of the available rows.
         """
         general = self.args.config.get('general', {}) or {}
         sample_size = general.get('sample_size')
-        if sample_size is not None:
-            return sample_size
         from TALENT.model.method_registry import get_method_spec
         try:
-            return get_method_spec(self.args.model_type).train_row_limit
+            limit = get_method_spec(self.args.model_type).train_row_limit
         except (KeyError, AttributeError):
-            return None
+            limit = None
+        if sample_size is None:
+            return limit
+        if isinstance(sample_size, bool) or not isinstance(sample_size, Real):
+            raise ValueError("sample_size must be a positive integer or a fraction between 0 and 1")
+        if isinstance(sample_size, Integral):
+            if sample_size < 1:
+                raise ValueError("sample_size must be a positive integer")
+        else:
+            if not 0 < sample_size < 1:
+                raise ValueError("a fractional sample_size must be between 0 and 1")
+            sample_size = int(n_rows * sample_size)
+            if sample_size == 0:
+                raise ValueError("sample_size selects zero training rows")
+        return sample_size if limit is None else min(sample_size, limit)
 
 
     def subsample_train_rows(self, X, y):
@@ -115,7 +126,7 @@ class Method(object, metaclass=abc.ABCMeta):
             from sklearn.utils import _safe_indexing
             if len(ids) != len(y) or len(ids) != X.shape[0]:
                 raise ValueError("cannot trace adapter support: input rows differ from the split")
-            sample_size = self.resolve_sample_size()
+            sample_size = self.resolve_sample_size(len(ids))
             if sample_size is None or len(ids) <= sample_size:
                 record_support(len(ids), list(ids))
                 return X, y
@@ -126,51 +137,56 @@ class Method(object, metaclass=abc.ABCMeta):
         record_support(len(selected_y))
         return selected_X, selected_y
 
+    def limit_training_context(self, data):
+        """Select training rows once before learning preprocessing or fitting."""
+        targets = data[2]['train']
+        indices, _ = self.subsample_train_rows(np.arange(len(targets)), targets)
+        if len(indices) == len(targets):
+            return data
+        from sklearn.utils import _safe_indexing
+
+        return tuple(
+            None if part is None else {**part, 'train': _safe_indexing(part['train'], indices)}
+            for part in data
+        )
+
     def _subsample_train_rows(self, X, y):
-        sample_size = self.resolve_sample_size()
+        sample_size = self.resolve_sample_size(X.shape[0])
         if sample_size is None or X.shape[0] <= sample_size:
             return X, y
         if not self.is_regression:
             from sklearn.model_selection import train_test_split
-            try:
-                selected_X, _, selected_y, _ = train_test_split(
-                    X, y, train_size=sample_size, stratify=y, random_state=self.args.seed
-                )
-                return selected_X, selected_y
-            except ValueError:
-                from sklearn.utils import _safe_indexing
-                from sklearn.utils.validation import assert_all_finite, check_consistent_length, column_or_1d
+            from sklearn.utils import _safe_indexing
+            from sklearn.utils.validation import assert_all_finite, check_consistent_length, column_or_1d
 
-                labels = column_or_1d(y)
-                assert_all_finite(labels)
-                check_consistent_length(X, labels)
+            labels = column_or_1d(y)
+            assert_all_finite(labels)
+            check_consistent_length(X, labels)
+            classes, counts = np.unique(labels, return_counts=True)
+            if sample_size < len(classes):
+                raise ValueError(f"sample_size cannot cover all {len(classes)} training classes")
+            indices = np.arange(len(labels))
+            try:
                 chosen, discarded = train_test_split(
-                    np.arange(len(labels)), train_size=sample_size, random_state=self.args.seed
+                    indices, train_size=sample_size, stratify=labels, random_state=self.args.seed
                 )
-                classes, counts = np.unique(labels, return_counts=True)
-                if len(chosen) < len(classes):
-                    raise ValueError(f"sample_size cannot cover all {len(classes)} training classes")
-                # sklearn requires at least two rows per class and room for each
-                # class in both partitions. Only the training partition is used.
-                if counts.min() >= 2 and len(discarded) >= len(classes):
+            except ValueError:
+                if counts.min() >= 2 and len(labels) - sample_size >= len(classes):
                     raise
-            # Reserve a random example of every class, then fill the unused
-            # slots without replacement in the same seeded row permutation.
-            order = np.concatenate([chosen, discarded])
-            _, first = np.unique(labels[order], return_index=True)
-            keep = np.zeros(len(y), dtype=bool)
-            keep[first] = True
-            keep[np.flatnonzero(~keep)[:len(chosen) - len(classes)]] = True
-            indices = order[keep]
-            return _safe_indexing(X, indices), _safe_indexing(y, indices)
+                # Only the sampled partition needs every class.
+                chosen, discarded = train_test_split(
+                    indices, train_size=sample_size, random_state=self.args.seed
+                )
+            if len(np.unique(labels[chosen])) < len(classes):
+                order = np.concatenate([chosen, discarded])
+                _, first = np.unique(labels[order], return_index=True)
+                keep = np.zeros(len(y), dtype=bool)
+                keep[first] = True
+                keep[np.flatnonzero(~keep)[:sample_size - len(classes)]] = True
+                chosen = order[keep]
+            return _safe_indexing(X, chosen), _safe_indexing(y, chosen)
         else:
             rng = np.random.RandomState(self.args.seed)
-            if isinstance(sample_size, (float, np.floating)):
-                if not 0 < sample_size < 1:
-                    raise ValueError("a fractional sample_size must be between 0 and 1")
-                sample_size = int(X.shape[0] * sample_size)
-                if sample_size == 0:
-                    raise ValueError("sample_size selects zero training rows")
             idx = rng.choice(X.shape[0], size=sample_size, replace=False)
             from sklearn.utils import _safe_indexing
             X = _safe_indexing(X, idx)

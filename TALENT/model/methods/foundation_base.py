@@ -8,9 +8,8 @@ shared pipeline once:
 
 * ``data_format`` -- NaN handling, label processing and ordinal encoding of
   categorical columns (fitted on train, re-applied at test time);
-* ``fit`` -- concatenates numerical and categorical columns (numerical first,
-  so the categorical columns are ``cat_indices``), applies the row cap from
-  :meth:`Method.subsample_train_rows`, builds the estimator via
+* ``fit`` -- selects the capped training context, concatenates numerical and
+  categorical columns (numerical first), builds the estimator via
   :meth:`construct_model` and fits it;
 * ``predict`` -- calls ``predict`` (regression) or ``predict_proba``
   (classification), computes the loss and metrics, and returns regression
@@ -118,7 +117,7 @@ class SklearnFoundationMethod(Method):
         return frame
 
     def fit(self, data, info, train=True, config=None):
-        N, C, y = data
+        N, C, y = self.limit_training_context(data)
         self.D = Dataset(N, C, y, info)
         self.N, self.C, self.y = self.D.N, self.D.C, self.D.y
         self.is_binclass, self.is_multiclass, self.is_regression = (
@@ -137,10 +136,6 @@ class SklearnFoundationMethod(Method):
             cat_indices = list(range(self.C['train'].shape[1]))
         else:
             sampled_X = self.N['train']
-
-        # Row cap: config['general']['sample_size'] override, else the
-        # registry's train_row_limit.
-        sampled_X, sampled_Y = self.subsample_train_rows(sampled_X, sampled_Y)
 
         self.sampled_X = sampled_X
         self.sampled_Y = sampled_Y

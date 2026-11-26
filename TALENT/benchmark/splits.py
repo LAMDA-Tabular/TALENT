@@ -62,6 +62,22 @@ class BenchmarkSplit:
         context = self.train[-size:] if self.strategy == "temporal" else self.train[:size]
         return replace(self, context=context)
 
+    def with_holdout_limits(self, *, val_limit=None, test_limit=None,
+                            seed=0, stratify=None, timestamps=None):
+        """Cap existing holdouts without changing training rows or moving observations.
+
+        Supply a mapping from row ID to class label for stratified sampling, or
+        to time for a suffix of the newest whole timestamp blocks. Without
+        either mapping, sample uniformly without replacement. Replaying the
+        reduced split with the full table requires `allow_extra_rows=True`.
+        """
+        if stratify is not None and timestamps is not None:
+            raise ValueError("choose stratify or timestamps for holdout limits")
+        val_seed, test_seed = np.random.SeedSequence(seed).spawn(2)
+        val = _limit_rows(self.val, val_limit, np.random.default_rng(val_seed), stratify, timestamps, "val_limit")
+        test = _limit_rows(self.test, test_limit, np.random.default_rng(test_seed), stratify, timestamps, "test_limit")
+        return replace(self, val=val, test=test) if (val, test) != (self.val, self.test) else self
+
     def save(self, path):
         """Atomically write a versioned JSON manifest. IDs are stored in plain text."""
         path = Path(path)
@@ -151,20 +167,78 @@ def _unit_codes(values, n_rows, temporal):
     return pd.factorize(values, sort=temporal)[0]
 
 
+def _row_metadata(ids, values):
+    if values is None:
+        return None
+    values = _unit_index(values)
+    if len(values) != len(ids):
+        raise ValueError("holdout metadata must align with row IDs")
+    return dict(zip(ids, values))
+
+
+def _limit_rows(rows, limit, rng, stratify, timestamps, name):
+    if limit is None:
+        return rows
+    if isinstance(limit, bool) or not isinstance(limit, Integral) or limit < 1:
+        raise ValueError(f"{name} must be a positive integer or None")
+    if len(rows) <= limit:
+        return rows
+    if stratify is None and timestamps is None:
+        selected = rng.choice(len(rows), size=limit, replace=False)
+    else:
+        metadata = timestamps if timestamps is not None else stratify
+        try:
+            values = [metadata[row] for row in rows]
+        except KeyError as exc:
+            raise ValueError(f"{name} requires metadata for every row in its holdout") from exc
+        codes = _unit_codes(values, len(rows), temporal=timestamps is not None)
+        counts = np.bincount(codes)
+        if timestamps is not None:
+            blocks = np.searchsorted(np.cumsum(counts[::-1]), limit, side="right")
+            if not blocks:
+                raise ValueError(f"{name} cannot fit the newest complete timestamp block")
+            selected = np.flatnonzero(codes >= len(counts) - blocks)
+        else:
+            if limit < len(counts):
+                raise ValueError(f"{name} cannot represent all {len(counts)} strata")
+            # Reserve one row per stratum, then apportion the remaining slots.
+            capacity = counts - 1
+            remainder = limit - len(counts)
+            proportional = capacity * (remainder / capacity.sum())
+            extra = proportional.astype(int)
+            quota = 1 + extra
+            largest = np.argsort(extra - proportional, kind="stable")
+            quota[largest[:remainder - extra.sum()]] += 1
+            order = rng.permutation(len(rows))
+            ordered = order[np.argsort(codes[order], kind="stable")]
+            offsets = np.r_[0, np.cumsum(counts)]
+            selected = np.concatenate([ordered[start:start + size] for start, size in zip(offsets, quota)])
+    return tuple(rows[i] for i in np.sort(selected))
+
+
 def make_split(row_ids, *, val_fraction=0.2, test_fraction=0.2, seed=0,
-               groups=None, timestamps=None, stratify=None):
+               groups=None, timestamps=None, stratify=None, val_limit=None, test_limit=None):
     """Split rows, whole groups, or whole timestamp blocks into train/val/test.
 
     Fractions apply to the number of split units. Temporal partitions are
     strictly ordered. Random and group splits randomize training-row order
     for nested context prefixes. Pass one class label per row as stratify
     for a stratified random split. Supply stable, non-sensitive row IDs.
+    Optional row limits reduce the resulting holdouts using the same metadata.
     """
     ids = _ids(row_ids, "dataset")
     if sum(value is not None for value in (groups, timestamps, stratify)) > 1:
         raise ValueError("choose one of stratify, groups or timestamps")
     if not (0 < val_fraction < 1 and 0 < test_fraction < 1 and val_fraction + test_fraction < 1):
         raise ValueError("validation and test fractions must be positive and leave training data")
+
+    def limit_holdouts(split):
+        if val_limit is None and test_limit is None:
+            return split
+        return split.with_holdout_limits(
+            val_limit=val_limit, test_limit=test_limit, seed=seed,
+            stratify=_row_metadata(ids, stratify), timestamps=_row_metadata(ids, timestamps),
+        )
     if stratify is not None:
         from sklearn.model_selection import train_test_split
 
@@ -190,7 +264,7 @@ def make_split(row_ids, *, val_fraction=0.2, test_fraction=0.2, seed=0,
             return tuple(ids[i] for i in positions)
 
         train_ids = row_ids_for(train)
-        return BenchmarkSplit(train_ids, row_ids_for(val), row_ids_for(test), train_ids, "random")
+        return limit_holdouts(BenchmarkSplit(train_ids, row_ids_for(val), row_ids_for(test), train_ids, "random"))
 
     rng = np.random.default_rng(seed)
     strategy = "random"
@@ -223,4 +297,4 @@ def make_split(row_ids, *, val_fraction=0.2, test_fraction=0.2, seed=0,
     train = members(units[:n_train])
     val = members(units[n_train:n_train + n_val])
     test = members(units[n_train + n_val:])
-    return BenchmarkSplit(train, val, test, train, strategy)
+    return limit_holdouts(BenchmarkSplit(train, val, test, train, strategy))

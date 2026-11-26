@@ -1,4 +1,5 @@
 from TALENT.model.methods.base import Method
+from TALENT.model.lib.query_batches import predict_in_batches, query_batch_size
 import torch
 import numpy as np
 import torch.nn.functional as F
@@ -78,7 +79,7 @@ class TabPFNMethod(Method):
 
 
     def fit(self, data, info, train = True, config = None):
-        N, C, y = data
+        N, C, y = self.limit_training_context(data)
         # if self.D is None:
         self.D = Dataset(N, C, y, info)
         self.N, self.C, self.y = self.D.N, self.D.C, self.D.y
@@ -95,19 +96,13 @@ class TabPFNMethod(Method):
             cat_indices = [i for i in range(self.C['train'].shape[1])]
         else:
             sampled_X = self.N['train']
-        # Row cap: config['general']['sample_size'] override, else the
-        # registry's train_row_limit. The TabPFN v2 wrapper subsamples
-        # internally, so the cap is forwarded to model.fit().
-        sample_size = self.resolve_sample_size()
-        if sample_size is None:
-            sample_size = sampled_X.shape[0]
         self.sampled_X = sampled_X
         self.sampled_Y = sampled_Y
         # The checkpoint is loaded (or downloaded) when the model is fitted.
         with weights_download_hint(getattr(self.args, 'model_type', 'tabpfn_v2')):
             self.construct_model(cat_indices=cat_indices)
             tic = time.time()
-            self.model.fit(sampled_X,sampled_Y,sample_size)
+            self.model.fit(sampled_X, sampled_Y, len(sampled_X))
             self.fit_time = time.time() - tic
 
 
@@ -118,13 +113,12 @@ class TabPFNMethod(Method):
     PREDICT_CHUNK_ROWS = 8192
 
     def _predict_in_chunks(self, predict_fn, X):
-        n_rows = X.shape[0]
-        chunk = self.PREDICT_CHUNK_ROWS
-        if n_rows <= chunk:
-            return predict_fn(X)
-        outputs = [predict_fn(X[start:start + chunk])
-                   for start in range(0, n_rows, chunk)]
-        return np.concatenate(outputs, axis=0)
+        general = self.args.config.get("general") or {}
+        chunk = query_batch_size(general, self.PREDICT_CHUNK_ROWS)
+        return predict_in_batches(
+            lambda start, stop: predict_fn(X if stop - start == len(X) else X[start:stop]),
+            len(X), chunk, retry_cuda_oom=torch.device(self.args.device).type == "cuda",
+        )
 
     def predict(self, data, info, model_name):
         N, C, y = data

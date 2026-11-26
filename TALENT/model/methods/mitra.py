@@ -2,6 +2,7 @@ from TALENT.model.methods.base import Method
 import torch
 import numpy as np
 import torch.nn.functional as F
+from numbers import Integral
 
 from TALENT.model.lib.data import (
     Dataset,
@@ -11,6 +12,7 @@ from TALENT.model.lib.data import (
     mse_safe_broadcast,
 )
 from TALENT.model.method_registry import weights_download_hint
+from TALENT.model.lib.query_batches import query_batch_size
 from TALENT.benchmark.measurement import timed_call, record_query_context
 import time
 
@@ -72,7 +74,7 @@ class MitraMethod(Method):
 
 
     def fit(self, data, info, train = True, config = None):
-        N, C, y = data
+        N, C, y = self.limit_training_context(data)
         self.D = Dataset(N, C, y, info)
         self.N, self.C, self.y = self.D.N, self.D.C, self.D.y
         self.is_binclass, self.is_multiclass, self.is_regression = self.D.is_binclass, self.D.is_multiclass, self.D.is_regression
@@ -89,10 +91,6 @@ class MitraMethod(Method):
         else:
             x_support = self.N['train']
         
-        # Row cap: config['general']['sample_size'] override, else the
-        # registry's train_row_limit (Mitra attends over the full support set).
-        x_support, y_support = self.subsample_train_rows(x_support, y_support)
-
         x_support = x_support.astype(np.float32)
         y_support = y_support.astype(np.float32 if self.is_regression else np.int64)
 
@@ -109,6 +107,15 @@ class MitraMethod(Method):
         self._bins = None
         if self.is_regression and self.model.dim_output > 1:
             self.y_support = self._encode_regression_bins(self.y_support)
+        general = self.args.config.get('general') or {}
+        max_samples_support = general.get('max_samples_support', 8192)
+        if isinstance(max_samples_support, bool) or not isinstance(max_samples_support, Integral) or max_samples_support < 1:
+            raise ValueError("max_samples_support must be a positive integer")
+        self._query_support_indices = None
+        if len(self.x_support) > max_samples_support:
+            self._query_support_indices = torch.randperm(len(self.x_support))[:max_samples_support]
+            self.x_support = self.x_support[self._query_support_indices]
+            self.y_support = self.y_support[self._query_support_indices]
         self.fit_time = 0  # in-context model: all work happens in predict()
 
 
@@ -152,23 +159,15 @@ class MitraMethod(Method):
         else:
             Test_X = self.N_test
 
-        x_query = torch.from_numpy(Test_X).float().to(self.args.device)  # [n_query, n_feat]
-
         n_obs_support = self.x_support.shape[0]
-        n_obs_query = x_query.shape[0]
+        n_obs_query = len(Test_X)
         n_feat = self.x_support.shape[1]
         
         general = self.args.config.get('general', {}) or {}
-        max_samples_support = general.get('max_samples_support', 8192)
-        max_samples_query = general.get('max_samples_query', 1024)
-
-        idx = None
-        if n_obs_support > max_samples_support:
-            idx = torch.randperm(n_obs_support)[:max_samples_support] 
-            self.x_support = self.x_support[idx, :]
-            self.y_support = self.y_support[idx]
-            n_obs_support = max_samples_support
-        record_query_context(n_obs_support, idx)
+        max_samples_query = query_batch_size(general, general.get('max_samples_query', 1024))
+        if isinstance(max_samples_query, bool) or not isinstance(max_samples_query, Integral) or max_samples_query < 1:
+            raise ValueError("max_samples_query must be a positive integer")
+        record_query_context(n_obs_support, self._query_support_indices)
         
         tic = time.time()
         results = []
@@ -176,7 +175,7 @@ class MitraMethod(Method):
         with torch.no_grad():
             for start in range(0, n_obs_query, max_samples_query):
                 end = min(start + max_samples_query, n_obs_query)
-                x_query_batch = x_query[start:end]   # [batch_query, n_feat]
+                x_query_batch = torch.from_numpy(Test_X[start:end]).float().to(self.args.device)
                 batch_size = 1
                 batch_n_query = x_query_batch.shape[0]
 
@@ -198,10 +197,10 @@ class MitraMethod(Method):
                     padding_obs_query__=padding_obs_query,
                 ) # [1, batch_n_query, n_classes]
 
-                results.append(test_logit.squeeze(0))
+                results.append(test_logit.squeeze(0).cpu())
         self.predict_time = time.time() - tic
 
-        test_logit = torch.cat(results, dim=0).cpu()
+        test_logit = torch.cat(results, dim=0)
         if not self.is_regression:
             test_logit = test_logit[:, :self.n_classes]
         elif self._bins is not None:

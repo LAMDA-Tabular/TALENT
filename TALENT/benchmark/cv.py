@@ -11,7 +11,7 @@ from time import perf_counter
 import numpy as np
 
 from .scoring import Scorer
-from .splits import BenchmarkSplit, _ids, _unit_codes, _unit_index
+from .splits import BenchmarkSplit, _ids, _row_metadata, _unit_codes, _unit_index
 from .checkpoint import load_result, run_directory, run_identity, save_result
 
 
@@ -21,13 +21,15 @@ def _fold_count(value, name):
 
 
 def make_folds(row_ids, *, cv=5, val_fraction=0.2, seed=0, stratify=None,
-               groups=None, timestamps=None, gap=0, vary_validation_seed=False):
+               groups=None, timestamps=None, gap=0, vary_validation_seed=False,
+               val_limit=None, test_limit=None):
     """Build outer test folds, each with its own training and validation partition.
 
     Grouped folds split whole groups. Temporal folds expand forward through
     distinct timestamps. The gap counts timestamp blocks at both boundaries.
     Set vary_validation_seed=True to add the one-based fold number to the seed
     for each shuffled validation split. Outer test folds use the original seed.
+    Optional row limits apply after each fold is partitioned.
     """
     from sklearn.model_selection import KFold, StratifiedKFold, TimeSeriesSplit, train_test_split
 
@@ -73,6 +75,9 @@ def make_folds(row_ids, *, cv=5, val_fraction=0.2, seed=0, stratify=None,
     if vary_validation_seed and seed is None and not temporal:
         raise ValueError("vary_validation_seed requires a fixed seed")
 
+    limit_holdouts = val_limit is not None or test_limit is not None
+    holdout_labels = _row_metadata(ids, labels) if limit_holdouts else None
+    holdout_times = _row_metadata(ids, timestamps) if limit_holdouts else None
     folds = []
     for fold_number, (development, test) in enumerate(partitions, start=1):
         if temporal:
@@ -85,7 +90,13 @@ def make_folds(row_ids, *, cv=5, val_fraction=0.2, seed=0, stratify=None,
             train, val = train_test_split(development, test_size=val_fraction, random_state=validation_seed,
                                           stratify=None if labels is None else labels[development])
         train_ids = members(train)
-        folds.append(BenchmarkSplit(train_ids, members(val), members(test), train_ids, strategy))
+        split = BenchmarkSplit(train_ids, members(val), members(test), train_ids, strategy)
+        if limit_holdouts:
+            split = split.with_holdout_limits(
+                val_limit=val_limit, test_limit=test_limit, stratify=holdout_labels,
+                timestamps=holdout_times, seed=None if seed is None else seed + fold_number,
+            )
+        folds.append(split)
     return tuple(folds)
 
 
@@ -145,7 +156,7 @@ def _score_folds(trial, args, config, *, method, folds, data, metric):
 def cross_validate(method, row_ids, N, C, y, info, *, cv=5, split_seed=0, val_fraction=0.2,
                    groups=None, timestamps=None, gap=0, threshold_cv=None, hpo_cv=None,
                    save_path=None, resume_dir=None, resume_key=None,
-                   vary_validation_seed=False, **options):
+                   vary_validation_seed=False, val_limit=None, test_limit=None, **options):
     """Evaluate one method with TALENT.run on disjoint outer test folds.
 
     Classification uses stratification for ordinary shuffled folds. Supply
@@ -157,6 +168,8 @@ def cross_validate(method, row_ids, N, C, y, info, *, cv=5, split_seed=0, val_fr
     history. Repeat the same call to continue an interrupted benchmark.
     resume_key can identify external data or model revisions. Set
     vary_validation_seed=True to offset the seed for each shuffled validation fold.
+    val_limit and test_limit cap the outer holdouts. Nested plans use the
+    retained development rows and score their own full holdouts.
     """
     from TALENT import get_method_spec
     from TALENT.model.method_registry import OutputType
@@ -180,12 +193,12 @@ def cross_validate(method, row_ids, N, C, y, info, *, cv=5, split_seed=0, val_fr
     groups = None if groups is None else _unit_index(groups).to_numpy()
     timestamps = None if timestamps is None else _unit_index(timestamps).to_numpy()
 
-    def plan(indices, count):
+    def plan(indices, count, **holdout_limits):
         return make_folds(
             [ids[i] for i in indices], cv=count, seed=split_seed, val_fraction=val_fraction, gap=gap,
             stratify=labels[indices] if classification and groups is None and timestamps is None else None,
             vary_validation_seed=vary_validation_seed, groups=None if groups is None else groups[indices],
-            timestamps=None if timestamps is None else timestamps[indices],
+            timestamps=None if timestamps is None else timestamps[indices], **holdout_limits,
         )
 
     if N is None and C is None:
@@ -193,7 +206,7 @@ def cross_validate(method, row_ids, N, C, y, info, *, cv=5, split_seed=0, val_fr
     for values in (N, C, groups, timestamps):
         if values is not None and len(values) != len(ids):
             raise ValueError("features, groups and timestamps must align with row IDs")
-    folds = plan(np.arange(len(ids)), cv)
+    folds = plan(np.arange(len(ids)), cv, val_limit=val_limit, test_limit=test_limit)
     nested = []
     for outer in folds:
         inner = ()

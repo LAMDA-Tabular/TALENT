@@ -304,6 +304,17 @@ For a classification holdout, pass `stratify=y` to `make_split`. The validation 
 
 **Choosing a split.** Pass `groups=` to keep whole groups together or `timestamps=` for chronological training, validation and test periods. Equal timestamps stay together. Validation and test fractions apply to the number of rows, groups or distinct timestamps, respectively. `with_context(k)` selects nested training subsets and preserves both holdouts. Temporal contexts use the most recent training rows. For classification, check class coverage when choosing small contexts. You can also construct `BenchmarkSplit(train, val, test, context)` with your own ordered ID sequences. The manifest stores IDs in plain text and fingerprints their assignments and order. Use non-sensitive IDs and record the dataset version separately. Replaying the manifest accepts reordered source data and checks that the row IDs match.
 
+**Limiting a holdout.** `make_split`, `make_folds` and `cross_validate` use
+every evaluation row by default. Set `val_limit` or `test_limit` to sample
+only that holdout after splitting. With class labels, a stratified sample
+preserves class representation. With timestamps, the selection keeps the
+newest complete timestamp blocks that fit the row budget. Otherwise the
+selection is uniform and reproducible with a fixed seed. The selected IDs
+become part of the split fingerprint. Use `split.run(..., allow_extra_rows=True)`
+when replaying a reduced split against the full table. For a custom
+selection strategy on an existing split, use `split.with_holdout_limits(...)`
+and pass labels or times keyed by row ID.
+
 **Measuring a run.** Every run reports three durations in seconds. `result.fit_time` and `result.predict_time` measure the final fit and test prediction calls, averaged across seeds. Individual times are in `result.per_seed`. `result.hpo_time` measures the Optuna search once across all seeds, including candidate training and validation. It is zero when tuning is disabled or an existing tuned configuration is loaded. Both CLIs report the shared search as `HPO_Time`. CUDA timings synchronise the configured device. Test timing includes preprocessing and metrics inside the adapter's prediction call and excludes the evaluator's separate threshold search. For ICL methods, fit time measures support preparation and any loading performed during fit. Older versions relied on adapter-specific timings, so historical times can differ.
 
 Pass `measure=True` for initialization, shared tuning time (including cache lookup), memory and provenance. Where instrumented, `load_seconds` measures backend initialization with checkpoint loading and overlaps fit time.
@@ -455,13 +466,21 @@ order. Top-level arrays refer to the last seed. Each `per_seed` entry has its
 own arrays. Binary threshold tuning reuses the same validation pass. Other
 runs request one extra prediction pass only when these outputs are requested.
 
-#### TabFM query memory
+#### Evaluation batches
 
-Set `config={"general": {"predict_chunk_size": 256}}` to score at most 256
-query rows per TabFM prediction call with the same fitted training context.
-The default starts with the full query split. On CUDA memory exhaustion,
-TabFM retries the failed rows in smaller chunks down to one row. The training
-context size and the number of ensemble members are separate settings.
+TabFM, TabPFN v2 and Real-TabPFN share an ordered query-batching routine.
+Set `config={"general": {"predict_chunk_size": 256}}` to score at most
+256 query rows per call with the same fitted training context. Mitra,
+Mitra-v2, Seldon and Seldon Mini accept the same setting through their native
+batching paths. Validation queries and test queries use the same adapter
+behavior. Benchmark metrics use each split's collected predictions.
+TabFM starts with the full query split by default. TabPFN v2 and Real-TabPFN
+start with up to 8,192 query rows. These three adapters retry CUDA memory
+failures with smaller batches down to one row. The training context size
+and ensemble size are separate settings.
+The benchmark keeps the holdout's predictions in memory for scoring.
+Batching bounds query work per call. A fixed training context and independent
+query rows are required for predictions to agree across batch sizes.
 
 Introspect or filter methods via the unified registry:
 
@@ -481,7 +500,7 @@ for s in TALENT.list_methods(
 
 Both the CLI scripts and the Python API are backed by the same `MethodSpec` registry, which dispatches to the registered adapter. New adapters also need default and search-space configurations.
 
-The registry is also the single source of truth for foundation-model training-row caps (`train_row_limit`): TabPFN 1k, TabPFN v2 / Real-TabPFN / Mitra / Mitra-v2 10k, TabPFN v2.5 50k, TabICL 500k, TabPFN v3 / TabPFN-3.5 / TabICL v2 1M; TabDPT, TabFM, LimiX, LimiX-2, Kumo Tabular, Causilo, Xiaomi-TabLDM and EXAONE-Tabular have no registry cap. The cap is applied automatically when fitting; setting `config['general']['sample_size']` overrides it for a single run. Likewise, `config['general']['n_estimators']` sets the ensemble size of every foundation model that has one.
+The registry records foundation-model training-row ceilings (`train_row_limit`): TabPFN 1k, TabPFN v2 / Real-TabPFN / Mitra / Mitra-v2 10k, TabPFN v2.5 50k, TabICL 500k, and TabPFN v3 / TabPFN-3.5 / TabICL v2 1M. The adapter selects this context before fitting preprocessing. Set `config['general']['sample_size']` to request a smaller context. Backends can apply further context selection internally. Use `config['general']['n_estimators']` to set the ensemble size when the method supports it.
 
 **Pre-trained weights.** Foundation models download their weights automatically on first use (from the Hugging Face Hub, or figshare for HyperFast) unless the checkpoint is bundled under `TALENT/model/models/`; `TALENT.get_method_spec(name).weights` states the source of each model. If loading the weights fails, the error names the source and the usual fixes:
 
