@@ -186,5 +186,6 @@ def swap_rows_back(tensor, indices):
     return tensor[inverse_indices]
 
 if __name__ == "__main__":
-    args = init_args()
-    generate_infenerce_config(args)
+    parser = argparse.ArgumentParser(description="Generate a LimiX inference configuration")
+    parser.add_argument("--inference_config_path", required=True)
+    generate_infenerce_config(parser.parse_args())

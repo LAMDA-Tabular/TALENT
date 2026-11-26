@@ -11,13 +11,37 @@ from time import perf_counter
 import numpy as np
 
 from .scoring import Scorer
-from .splits import BenchmarkSplit, _ids, _row_metadata, _unit_codes, _unit_index
+from .splits import BenchmarkSplit, _ids, _row_metadata, _split_development, _unit_codes, _unit_index
 from .checkpoint import load_result, run_directory, run_identity, save_result
 
 
 def _fold_count(value, name):
     if isinstance(value, bool) or not isinstance(value, Integral) or value < 2:
         raise ValueError(f"{name} must be an integer of at least two")
+
+
+def _shuffled_partitions(units, cv, seed, labels):
+    from sklearn.model_selection import KFold, StratifiedKFold
+
+    if labels is None:
+        return KFold(cv, shuffle=True, random_state=seed).split(units)
+    return StratifiedKFold(cv, shuffle=True, random_state=seed).split(units, labels)
+
+
+def iter_shuffled_fold_indices(n_rows, *, cv=5, val_fraction=0.2, seed=0,
+                              stratify=None, vary_validation_seed=False):
+    """Yield ordered train, validation and test indices for each shuffled fold."""
+    _fold_count(cv, "cv")
+    if vary_validation_seed and seed is None:
+        raise ValueError("vary_validation_seed requires a fixed seed")
+    labels = None if stratify is None else np.asarray(stratify)
+    for number, (development, test) in enumerate(
+        _shuffled_partitions(np.arange(n_rows), cv, seed, labels), start=1
+    ):
+        train, val = _split_development(
+            development, val_fraction, seed + number if vary_validation_seed else seed, labels,
+        )
+        yield train, val, test
 
 
 def make_folds(row_ids, *, cv=5, val_fraction=0.2, seed=0, stratify=None,
@@ -31,7 +55,7 @@ def make_folds(row_ids, *, cv=5, val_fraction=0.2, seed=0, stratify=None,
     for each shuffled validation split. Outer test folds use the original seed.
     Optional row limits apply after each fold is partitioned.
     """
-    from sklearn.model_selection import KFold, StratifiedKFold, TimeSeriesSplit, train_test_split
+    from sklearn.model_selection import TimeSeriesSplit
 
     ids = np.asarray(_ids(row_ids, "dataset"), dtype=object)
     _fold_count(cv, "cv")
@@ -58,10 +82,10 @@ def make_folds(row_ids, *, cv=5, val_fraction=0.2, seed=0, stratify=None,
             raise ValueError("stratify requires one label per row")
         if np.unique(labels, return_counts=True)[1].min() < cv:
             raise ValueError("stratified CV requires at least cv rows in every class")
-        partitions = StratifiedKFold(cv, shuffle=True, random_state=seed).split(units, labels)
+        partitions = _shuffled_partitions(units, cv, seed, labels)
     else:
         strategy = "group" if groups is not None else "random"
-        partitions = KFold(cv, shuffle=True, random_state=seed).split(units)
+        partitions = _shuffled_partitions(units, cv, seed, labels)
 
     # Preserve both the unit order and the original order within tied units.
     ordered = np.argsort(codes, kind="stable")
@@ -87,8 +111,7 @@ def make_folds(row_ids, *, cv=5, val_fraction=0.2, seed=0, stratify=None,
             train, val = development[:boundary - gap], development[boundary:]
         else:
             validation_seed = seed + fold_number if vary_validation_seed else seed
-            train, val = train_test_split(development, test_size=val_fraction, random_state=validation_seed,
-                                          stratify=None if labels is None else labels[development])
+            train, val = _split_development(development, val_fraction, validation_seed, labels)
         train_ids = members(train)
         split = BenchmarkSplit(train_ids, members(val), members(test), train_ids, strategy)
         if limit_holdouts:

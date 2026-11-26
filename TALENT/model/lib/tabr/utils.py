@@ -59,7 +59,7 @@ class ResNet(nn.Module):
 
         Activation = getattr(nn, activation)
         Normalization = (
-            Identity if normalization == 'none' else getattr(nn, normalization)
+            nn.Identity if normalization == 'none' else getattr(nn, normalization)
         )
         d_hidden = int(d_block * d_hidden_multiplier)
 
@@ -67,7 +67,7 @@ class ResNet(nn.Module):
         self.blocks = nn.ModuleList(
             [
                 nn.Sequential(
-                    Normalization(d_block) if first_normalization else Identity(),
+                    Normalization(d_block) if first_normalization else nn.Identity(),
                     (
                         nn.Linear(d_block, d_hidden)
                         if n_linear_layers_per_block == 2
@@ -78,7 +78,7 @@ class ResNet(nn.Module):
                     (
                         nn.Linear(d_hidden, d_block)
                         if n_linear_layers_per_block == 2
-                        else Identity()
+                        else nn.Identity()
                     ),
                 )
                 for _ in range(n_blocks)

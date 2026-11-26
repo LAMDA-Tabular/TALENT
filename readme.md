@@ -302,6 +302,12 @@ print(report["ranking"], report["counts"], report["contrasts"])
 
 For a classification holdout, pass `stratify=y` to `make_split`. The validation and test fractions both refer to the full dataset. Grouped and chronological splits use their own boundaries.
 
+For an existing pipeline that applies its own per-fold preprocessing, import
+`iter_shuffled_fold_indices` or `shuffled_holdout_indices` from
+`TALENT.benchmark`. They return ordered training, validation, and test row
+positions. Both interpret the validation fraction relative to the
+development partition. The single holdout accepts an explicit validation seed.
+
 **Choosing a split.** Pass `groups=` to keep whole groups together or `timestamps=` for chronological training, validation and test periods. Equal timestamps stay together. Validation and test fractions apply to the number of rows, groups or distinct timestamps, respectively. `with_context(k)` selects nested training subsets and preserves both holdouts. Temporal contexts use the most recent training rows. For classification, check class coverage when choosing small contexts. You can also construct `BenchmarkSplit(train, val, test, context)` with your own ordered ID sequences. The manifest stores IDs in plain text and fingerprints their assignments and order. Use non-sensitive IDs and record the dataset version separately. Replaying the manifest accepts reordered source data and checks that the row IDs match.
 
 **Limiting a holdout.** `make_split`, `make_folds` and `cross_validate` use

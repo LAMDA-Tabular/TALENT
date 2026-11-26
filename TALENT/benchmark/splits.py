@@ -176,6 +176,29 @@ def _row_metadata(ids, values):
     return dict(zip(ids, values))
 
 
+def _split_development(indices, val_fraction, seed, labels):
+    from sklearn.model_selection import train_test_split
+
+    return train_test_split(indices, test_size=val_fraction, random_state=seed,
+                            stratify=None if labels is None else labels[indices])
+
+
+def shuffled_holdout_indices(n_rows, *, test_fraction=0.2, val_fraction=0.2,
+                             seed=0, validation_seed=None, stratify=None):
+    """Return train, validation and test indices with validation relative to development."""
+    from sklearn.model_selection import train_test_split
+
+    labels = None if stratify is None else np.asarray(stratify)
+    indices = np.arange(n_rows)
+    development, test = train_test_split(
+        indices, test_size=test_fraction, random_state=seed, stratify=labels,
+    )
+    train, val = _split_development(
+        development, val_fraction, seed if validation_seed is None else validation_seed, labels,
+    )
+    return train, val, test
+
+
 def _limit_rows(rows, limit, rng, stratify, timestamps, name):
     if limit is None:
         return rows
